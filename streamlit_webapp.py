@@ -19,47 +19,74 @@ class ANN(nn.Module):
 
 # === Load model and scaler
 MODELS = {
-    'ABC': {
-        'model': r"models/artificialBeeColony/model.pth",
-        'scaler': r"models/artificialBeeColony/scaler.pkl"
+    'ABC_REGULAR': {
+        'model': r"models/artificialBeeColony/regular/model.pth",
+        'scaler': r"models/artificialBeeColony/regular/scaler.pkl"
     },
-    'GENETIC': {
-        'model': r"models/genetic/model.pth",
-        'scaler': r"models/genetic/model.pth",
+    'ABC_SEISMIC': {
+        'model': '',
+        'scaler': ''
+    },
+    'GENETIC_REGULAR': {
+        'model': r"models/genetic/regular/model.pth",
+        'scaler': r"models/genetic/regular/model.pth",
+    },
+    'GENETIC_SEISMIC': {
+        'model': '',
+        'scaler': ''
     }
 }
 
+D_VALS = {
+    'Moderately Disturbed Rock Mass': 0.7,
+    'Undisturbed Rock Mass': 1
+}
+
+MODEL_LABELS = {
+    'Artificial Bee Colony': 'ABC_REGULAR',
+    'Artificial Bee Colony (Seismic)': 'ABC_SEISMIC',
+    'Genetic Algorithm': 'GENETIC_REGULAR',
+    'Genetic Algorithm (Seismic)': 'GENETIC_SEISMIC'
+}
+
 # Feature name labels
-MODEL = 'Prediction Model'
-SLOPE_HEIGHT = 'Slope Height'
-SLOPE_ANGLE = 'Slope Angle'
-UCS = 'Uniaxial Compressio Strength'
-GSI = 'Geological Strength Index'
-MI = 'Material Constant (mi)'
-D_VAL = 'Disturbance Factor'
-PR = 'Poissons Ratio'
-YM = 'Youngs Modulus (E) of Intact Rock'
-DEN = 'Density'
+MODEL_INPUT_LABEL = 'Prediction Model'
+SLOPE_HEIGHT_INPUT_LABEL = 'Slope Height'
+SLOPE_ANGLE_INPUT_LABEL = 'Slope Angle'
+UCS_INPUT_LABEL = 'Uniaxial Compressio Strength'
+GSI_INPUT_LABEL = 'Geological Strength Index'
+MI_INPUT_LABEL = 'Material Constant (mi)'
+D_VAL_INPUT_LABEL = 'Disturbance Factor'
+PR_INPUT_LABEL = 'Poissons Ratio'
+YM_INPUT_LABEL = 'Youngs Modulus (E) of Intact Rock'
+DEN_INPUT_LABEL = 'Density'
 
 input_values = []
 
 # === Streamlit App Interface
-st.title("🧠 ABC-ANN Model for FoS Prediction")
-st.write("Enter the 9 input parameters to predict the Factor of Safety (FoS):")
+st.title("🧠 Factor of Safety Prediction")
+st.write("Please provide the following to predict the Factor of Safety (FoS):")
 
 # Prepare input form
-selected_model = st.selectbox(MODEL, options=MODELS.keys())
-selected_seismic = st.selectbox('Seismic Activity', options=['Yes', 'No'])
+selected_model = MODEL_LABELS[st.selectbox(MODEL_INPUT_LABEL, MODEL_LABELS.keys())]
 
-input_values.append(st.number_input(SLOPE_HEIGHT, min_value=13.0, max_value=74.0, value="min", step=0.1, format="%.1f"))
-input_values.append(st.number_input(SLOPE_ANGLE, min_value=55.0, max_value=84.0, value="min", step=0.1, format="%.1f"))
-input_values.append(st.number_input(UCS, min_value=42.0, max_value=87.0, value="min", step=0.1, format="%.1f"))
-input_values.append(st.number_input(GSI, min_value=25, max_value=85, value="min", step=1, format="%i"))
-input_values.append(st.number_input(MI, min_value=25, max_value=35, value="min", step=1, format="%i"))
-input_values.append(st.selectbox(D_VAL, [0.7, 1], help='Disturbance Value'))
-input_values.append(st.number_input(PR, min_value=0.15, max_value=0.21, value="min", step=0.01, format="%.2f"))
-input_values.append(st.number_input(YM, min_value=8783.0, max_value=36123.0, value="min", step=0.1, format="%.1f"))
-input_values.append(st.number_input(DEN, min_value=2.55, max_value=2.75, value="min", step=0.01, format="%.2f"))
+colLeft, colRight = st.columns(2)
+
+with colLeft:
+    input_values.append(st.number_input(SLOPE_HEIGHT_INPUT_LABEL, min_value=13.0, max_value=74.0, value="min", step=0.1, format="%.1f"))
+    input_values.append(st.number_input(SLOPE_ANGLE_INPUT_LABEL, min_value=55.0, max_value=84.0, value="min", step=0.1, format="%.1f"))
+    input_values.append(st.number_input(UCS_INPUT_LABEL, min_value=42.0, max_value=87.0, value="min", step=0.1, format="%.1f"))
+    input_values.append(st.number_input(GSI_INPUT_LABEL, min_value=25, max_value=85, value="min", step=1, format="%i"))
+
+with colRight:
+    input_values.append(st.number_input(MI_INPUT_LABEL, min_value=25, max_value=35, value="min", step=1, format="%i"))
+
+input_values.append(D_VALS[st.selectbox(D_VAL_INPUT_LABEL, D_VALS.keys(), help='Disturbance Value')])
+
+with colRight:
+    input_values.append(st.number_input(PR_INPUT_LABEL, min_value=0.15, max_value=0.21, value="min", step=0.01, format="%.2f"))
+    input_values.append(st.number_input(YM_INPUT_LABEL, min_value=8783.0, max_value=36123.0, value="min", step=0.1, format="%.1f"))
+    input_values.append(st.number_input(DEN_INPUT_LABEL, min_value=2.55, max_value=2.75, value="min", step=0.01, format="%.2f"))
 
 
 checkpoint = torch.load(MODELS[selected_model]['model'])
