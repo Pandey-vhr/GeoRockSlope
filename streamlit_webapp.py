@@ -49,17 +49,31 @@ MODEL_LABELS = {
     'Genetic Algorithm (Seismic)': 'GENETIC_SEISMIC'
 }
 
+HELP_DESCRIPTONS = {
+    'SLOPE_HEIGHT': 'Value Range: 13m to 74m',
+    'SLOPE_ANGLE': 'Value Range: 55° to 84°',
+    'UCS': 'Value Range: 42MPa to 87MPa',
+    'GSI': 'Value Range: 25 to 85',
+    'MI': 'Value Range: 23 to 35',
+    'D_VAL': '',
+    'PR': 'Value Range: 0.15 to 0.21',
+    'YM': 'Value Range: 8783 to 36123',
+    'DEN': 'Value Range: 2.55g/cm³ to 2.75g/cm³'
+}
+
 # Feature name labels
-MODEL_INPUT_LABEL = 'Prediction Model'
-SLOPE_HEIGHT_INPUT_LABEL = 'Slope Height'
-SLOPE_ANGLE_INPUT_LABEL = 'Slope Angle'
-UCS_INPUT_LABEL = 'Uniaxial Compressio Strength'
-GSI_INPUT_LABEL = 'Geological Strength Index'
-MI_INPUT_LABEL = 'Material Constant (mi)'
-D_VAL_INPUT_LABEL = 'Disturbance Factor'
-PR_INPUT_LABEL = 'Poissons Ratio'
-YM_INPUT_LABEL = 'Youngs Modulus (E) of Intact Rock'
-DEN_INPUT_LABEL = 'Density'
+INPUT_LABELS = {
+    'MODEL': 'Prediction Model',
+    'SLOPE_HEIGHT': 'Slope Height',
+    'SLOPE_ANGLE': 'Slope Angle',
+    'UCS': 'Uniaxial Compressio Strength',
+    'GSI': 'Geological Strength Index',
+    'MI': 'Material Constant (mi)',
+    'D_VAL': 'Disturbance Factor',
+    'PR': 'Poissons Ratio',
+    'YM': 'Youngs Modulus (E) of Intact Rock',
+    'DEN': 'Density'
+}
 
 input_values = []
 
@@ -68,25 +82,25 @@ st.title("🧠 Factor of Safety Prediction")
 st.write("Please provide the following to predict the Factor of Safety (FoS):")
 
 # Prepare input form
-selected_model = MODEL_LABELS[st.selectbox(MODEL_INPUT_LABEL, MODEL_LABELS.keys())]
+selected_model = MODEL_LABELS[st.selectbox(INPUT_LABELS['MODEL'], MODEL_LABELS.keys())]
 
 colLeft, colRight = st.columns(2)
 
 with colLeft:
-    input_values.append(st.number_input(SLOPE_HEIGHT_INPUT_LABEL, min_value=13.0, max_value=74.0, value="min", step=0.1, format="%.1f"))
-    input_values.append(st.number_input(SLOPE_ANGLE_INPUT_LABEL, min_value=55.0, max_value=84.0, value="min", step=0.1, format="%.1f"))
-    input_values.append(st.number_input(UCS_INPUT_LABEL, min_value=42.0, max_value=87.0, value="min", step=0.1, format="%.1f"))
-    input_values.append(st.number_input(GSI_INPUT_LABEL, min_value=25, max_value=85, value="min", step=1, format="%i"))
+    input_values.append(st.number_input(INPUT_LABELS['SLOPE_HEIGHT'], min_value=13.0, max_value=74.0, value="min", step=0.1, format="%.1f", help=HELP_DESCRIPTONS['SLOPE_HEIGHT']))
+    input_values.append(st.number_input(INPUT_LABELS['SLOPE_ANGLE'], min_value=55.0, max_value=84.0, value="min", step=0.1, format="%.1f", help=HELP_DESCRIPTONS['SLOPE_ANGLE']))
+    input_values.append(st.number_input(INPUT_LABELS['UCS'], min_value=42.0, max_value=87.0, value="min", step=0.1, format="%.1f", help=HELP_DESCRIPTONS['UCS']))
+    input_values.append(st.number_input(INPUT_LABELS['GSI'], min_value=25, max_value=85, value="min", step=1, format="%i", help=HELP_DESCRIPTONS['GSI']))
 
 with colRight:
-    input_values.append(st.number_input(MI_INPUT_LABEL, min_value=25, max_value=35, value="min", step=1, format="%i"))
+    input_values.append(st.number_input(INPUT_LABELS['MI'], min_value=25, max_value=35, value="min", step=1, format="%i", help=HELP_DESCRIPTONS['MI']))
 
-input_values.append(D_VALS[st.selectbox(D_VAL_INPUT_LABEL, D_VALS.keys(), help='Disturbance Value')])
+input_values.append(D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], D_VALS.keys(), help=HELP_DESCRIPTONS['D_VAL'])])
 
 with colRight:
-    input_values.append(st.number_input(PR_INPUT_LABEL, min_value=0.15, max_value=0.21, value="min", step=0.01, format="%.2f"))
-    input_values.append(st.number_input(YM_INPUT_LABEL, min_value=8783.0, max_value=36123.0, value="min", step=0.1, format="%.1f"))
-    input_values.append(st.number_input(DEN_INPUT_LABEL, min_value=2.55, max_value=2.75, value="min", step=0.01, format="%.2f"))
+    input_values.append(st.number_input(INPUT_LABELS['PR'], min_value=0.15, max_value=0.21, value="min", step=0.01, format="%.2f", help=HELP_DESCRIPTONS['PR']))
+    input_values.append(st.number_input(INPUT_LABELS['YM'], min_value=8783.0, max_value=36123.0, value="min", step=0.1, format="%.1f", help=HELP_DESCRIPTONS['YM']))
+    input_values.append(st.number_input(INPUT_LABELS['DEN'], min_value=2.55, max_value=2.75, value="min", step=0.01, format="%.2f", help=HELP_DESCRIPTONS['DEN']))
 
 
 checkpoint = torch.load(MODELS[selected_model]['model'])
