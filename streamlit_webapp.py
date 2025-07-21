@@ -39,7 +39,7 @@ MODELS = {
 
 D_VALS = {
     'Moderately Disturbed Rock Mass': 0.7,
-    'Undisturbed Rock Mass': 1
+    'Very Disturbed Rock Mass': 1
 }
 
 MODEL_LABELS = {
