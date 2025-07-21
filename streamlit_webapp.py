@@ -78,7 +78,7 @@ INPUT_LABELS = {
 input_values = []
 
 # === Streamlit App Interface
-st.title("GeoRockSlope")
+st.title("🧩GeoRockSlope")
 st.write("A machine learning-powered FoS prediction tool integrating finite element analysis and the Generalized Hoek-Brown failure criterion.")
 
 # Prepare input form
