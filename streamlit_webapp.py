@@ -78,7 +78,7 @@ INPUT_LABELS = {
 input_values = []
 
 # === Streamlit App Interface
-st.title("🧠 Factor of Safety Prediction")
+st.title("RockSlope")
 st.write("Please provide the following to predict the Factor of Safety (FoS):")
 
 # Prepare input form
