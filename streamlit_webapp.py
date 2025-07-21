@@ -78,8 +78,8 @@ INPUT_LABELS = {
 input_values = []
 
 # === Streamlit App Interface
-st.title("RockSlope")
-st.write("Please provide the following to predict the Factor of Safety (FoS):")
+st.title("GeoRockSlope")
+st.write("A machine learning-powered FoS prediction tool integrating finite element analysis and the Generalized Hoek-Brown failure criterion.")
 
 # Prepare input form
 selected_model = MODEL_LABELS[st.selectbox(INPUT_LABELS['MODEL'], MODEL_LABELS.keys())]
