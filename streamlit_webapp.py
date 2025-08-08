@@ -56,7 +56,7 @@ HELP_DESCRIPTONS = {
     'GSI': 'Value Range: 25 to 85',
     'MI': 'Value Range: 23 to 35',
     'D_VAL': '',
-    'PR': 'Value Range: 0.15 to 0.21',
+    'PR': 'Value Range: 0.15 to 0.22',
     'YM': 'Value Range: 8783 to 36123',
     'DEN': 'Value Range: 2.55g/cm³ to 2.75g/cm³'
 }
