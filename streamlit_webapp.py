@@ -98,7 +98,7 @@ with colRight:
 input_values.append(D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], D_VALS.keys(), help=HELP_DESCRIPTONS['D_VAL'])])
 
 with colRight:
-    input_values.append(st.number_input(INPUT_LABELS['PR'], min_value=0.15, max_value=0.21, value="min", step=0.01, format="%.2f", help=HELP_DESCRIPTONS['PR']))
+    input_values.append(st.number_input(INPUT_LABELS['PR'], min_value=0.15, max_value=0.22, value="min", step=0.01, format="%.2f", help=HELP_DESCRIPTONS['PR']))
     input_values.append(st.number_input(INPUT_LABELS['YM'], min_value=8783.0, max_value=36123.0, value="min", step=0.1, format="%.1f", help=HELP_DESCRIPTONS['YM']))
     input_values.append(st.number_input(INPUT_LABELS['DEN'], min_value=2.55, max_value=2.75, value="min", step=0.01, format="%.2f", help=HELP_DESCRIPTONS['DEN']))
 
