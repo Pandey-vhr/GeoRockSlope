@@ -29,8 +29,8 @@ MODELS = {
     },
     'GENETIC_REGULAR': {
         'model': r"models/ga_ann_f/model.joblib",
-        'scaler_X': r"models/genetic/scaler_X.joblib",
-        'scaler_Y': r"models/genetic/scaler_Y.joblib",
+        'scaler_X': r"models/ga_ann_f/scaler_X.joblib",
+        'scaler_Y': r"models/ga_ann_f/scaler_Y.joblib",
     },
     'GENETIC_SEISMIC': {
         'model': '',
