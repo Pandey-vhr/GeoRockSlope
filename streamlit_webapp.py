@@ -20,12 +20,14 @@ class ANN(nn.Module):
 # === Load model and scaler
 MODELS = {
     'ABC_REGULAR': {
-        'model': r"models/artificialBeeColony/regular/model.pth",
-        'scaler': r"models/artificialBeeColony/regular/scaler.pkl"
+        'model': r"models/abc_ann_f/model.joblib",
+        'scaler_X': r"models/abc_ann_f/scaler_X.joblib",
+        'scaler_Y': r"models/abc_ann_f/scaler_y.joblib",
     },
     'ABC_SEISMIC': {
-        'model': '',
-        'scaler': ''
+        'model': r"models/abc_ann_sf/model.joblib",
+        'scaler_X': r"models/abc_ann_sf/scaler_X.joblib",
+        'scaler_Y': r"models/abc_ann_sf/scaler_y.joblib",
     },
     'GENETIC_REGULAR': {
         'model': r"models/ga_ann_f/model.joblib",
@@ -33,8 +35,9 @@ MODELS = {
         'scaler_Y': r"models/ga_ann_f/scaler_y.joblib",
     },
     'GENETIC_SEISMIC': {
-        'model': '',
-        'scaler': ''
+        'model': r"models/ga_ann_sf/model.joblib",
+        'scaler_X': r"models/ga_ann_sf/scaler_X.joblib",
+        'scaler_Y': r"models/ga_ann_sf/scaler_y.joblib",
     }
 }
 
