@@ -113,8 +113,8 @@ with colRight:
 
 # New Version
 model = joblib.load(MODELS[selected_model]['model'])
-scaler_x = joblib.load(MODELS[selected_model]['scaler_x'])
-scaler_y = joblib.load(MODELS[selected_model]['scaler_y'])
+scaler_x = joblib.load(MODELS[selected_model]['scaler_X'])
+scaler_y = joblib.load(MODELS[selected_model]['scaler_Y'])
 
 if st.button("Predict Factor of Safety"):
     # === Preprocess, predict, inverse scale ===
