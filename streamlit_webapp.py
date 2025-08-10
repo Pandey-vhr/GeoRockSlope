@@ -28,8 +28,9 @@ MODELS = {
         'scaler': ''
     },
     'GENETIC_REGULAR': {
-        'model': r"models/genetic/regular/model.pth",
-        'scaler': r"models/genetic/regular/model.pth",
+        'model': r"models/ga_ann_f/model.joblib",
+        'scaler_X': r"models/genetic/scaler_X.joblib",
+        'scaler_Y': r"models/genetic/scaler_Y.joblib",
     },
     'GENETIC_SEISMIC': {
         'model': '',
@@ -103,20 +104,32 @@ with colRight:
     input_values.append(st.number_input(INPUT_LABELS['DEN'], min_value=2.55, max_value=2.75, value="min", step=0.01, format="%.2f", help=HELP_DESCRIPTONS['DEN']))
 
 
-checkpoint = torch.load(MODELS[selected_model]['model'])
-input_dim = checkpoint['input_dim']
-model = ANN(input_dim, checkpoint['h1'], checkpoint['h2'], checkpoint['h3'])
-model.load_state_dict(checkpoint['model_state_dict'])
-model.eval()
+# checkpoint = torch.load(MODELS[selected_model]['model'])
+# input_dim = checkpoint['input_dim']
+# model = ANN(input_dim, checkpoint['h1'], checkpoint['h2'], checkpoint['h3'])
+# model.load_state_dict(checkpoint['model_state_dict'])
+# model.eval()
+# scaler = joblib.load(MODELS[selected_model]['scaler'])
 
-scaler = joblib.load(MODELS[selected_model]['scaler'])
+# New Version
+model = joblib.load(MODELS[selected_model]['model'])
+scaler_x = joblib.load(MODELS[selected_model]['scaler_x'])
+scaler_y = joblib.load(MODELS[selected_model]['scaler_y'])
 
 if st.button("Predict Factor of Safety"):
+    # === Preprocess, predict, inverse scale ===
     input_array = np.array(input_values).reshape(1, -1)
-    input_scaled = scaler.transform(input_array)
-    input_tensor = torch.tensor(input_scaled, dtype=torch.float32)
-
-    with torch.no_grad():
-        prediction = model(input_tensor).item()
+    X_scaled = scaler_x.transform(input_array)
+    y_pred_scaled = model.predict(X_scaled)
+    y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1))
     
-    st.success(f"✅ Predicted Factor of Safety (FoS): **{prediction:.4f}**")
+    st.success(f"✅ Predicted Factor of Safety (FoS): **{y_pred[0,0]:.4f}**")
+
+    
+    # input_scaled = scaler.transform(input_array)
+    # input_tensor = torch.tensor(input_scaled, dtype=torch.float32)
+
+    # with torch.no_grad():
+    #     prediction = model(input_tensor).item()
+    
+    # st.success(f"✅ Predicted Factor of Safety (FoS): **{prediction:.4f}**")
