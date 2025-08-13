@@ -1,9 +1,8 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
 import joblib
 from pathlib import Path
-import json, math
+import json
 
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
@@ -20,7 +19,7 @@ RANGES_PATH = BASE / "training_ranges.json"
 # ----------------------------
 FEATURE_ORDER = ["SlopeHeight","SlopeAngle","UCS","GSI","mi","D","PoissonsRatio","E","Density"]
 
-# Your original labels/help (spelling preserved)
+# Labels/help
 D_VALS = {
     'Moderately Disturbed Rock Mass': 0.7,
     'Very Disturbed Rock Mass': 1.0,
@@ -74,6 +73,21 @@ def load_ranges():
             pass
     return None
 
+def _pretty_model_name(folder_name: str) -> str:
+    """Nice labels for ABC/GA/ACOR models + seismic suffix."""
+    s = folder_name.lower()
+    if s.startswith("abc_"):
+        algo = "Artificial Bee Colony"
+    elif s.startswith("ga_"):
+        algo = "Genetic Algorithm"
+    elif s.startswith("acor_"):
+        algo = "Ant Colony Optimization (ACOR)"
+    else:
+        # Fallback: readable from folder
+        algo = folder_name.replace("_", " ").title()
+    seismic = " (Seismic)" if ("sf" in s or "seismic" in s) else ""
+    return f"{algo}{seismic}"
+
 @st.cache_resource
 def load_manifest():
     # 1) Try explicit manifest first
@@ -88,27 +102,26 @@ def load_manifest():
         except Exception as e:
             st.warning(f"Manifest read error: {e}")
 
-    # 2) Auto-discover: subfolders with model+scalers
+    # 2) Auto-discover: subfolders with model+scalers (includes acor_ann_f / acor_ann_sf)
     entries = []
     if MODELS_DIR.exists():
         for sub in sorted(p for p in MODELS_DIR.iterdir() if p.is_dir()):
             m, sx, sy = sub/"model.joblib", sub/"scaler_X.joblib", sub/"scaler_y.joblib"
             if m.exists() and sx.exists() and sy.exists():
-                name = sub.name.replace("_", " ").upper()
-                target = "Seismic FoS" if ("sf" in sub.name.lower() or "seismic" in sub.name.lower()) else "FoS"
                 entries.append({
                     "id": sub.name,
-                    "name": name,
+                    "name": _pretty_model_name(sub.name),
                     "model_path": str(m),
                     "scaler_X_path": str(sx),
                     "scaler_y_path": str(sy),
-                    "target_name": target,
+                    "target_name": "Seismic FoS" if ("sf" in sub.name.lower() or "seismic" in sub.name.lower()) else "FoS",
                     "feature_names": FEATURE_ORDER
                 })
     return entries
 
 @st.cache_resource(show_spinner=False)
 def load_artifacts(entry):
+    # Cache global resources (ML models + scalers) per Streamlit guidance
     model = joblib.load(entry["model_path"])
     scaler_X = joblib.load(entry["scaler_X_path"])
     scaler_y = joblib.load(entry["scaler_y_path"])
@@ -169,8 +182,8 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", HELP_DESCRIPTIONS['DEN'])
 
-    # row in exact training order
-    x_row = [vals[n] for n in FEATURE_ORDER]
+    # IMPORTANT: row in the model's declared training order
+    x_row = [vals[n] for n in feature_names]
     return vals, x_row
 
 def predict_one(model, scaler_X, scaler_y, row_vals):
@@ -181,7 +194,7 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 def bounds_warning(values_dict, ranges_data):
-    if not ranges_data: 
+    if not ranges_data:
         return
     warn = []
     for k, v in values_dict.items():
@@ -201,7 +214,7 @@ st.write("A machine learning-powered FoS / Seismic-FoS prediction tool integrati
 ranges = load_ranges()
 models = load_manifest()
 if not models:
-    st.error("No models found. Make sure each folder in 'models/' has model.joblib, scaler_X.joblib, scaler_y.joblib (or provide models/models_manifest.json).")
+    st.error("No models found. Each folder in 'models/' must have model.joblib, scaler_X.joblib, scaler_y.joblib (or provide models/models_manifest.json).")
     st.caption(f"Looking in: {MODELS_DIR}")
     st.stop()
 
@@ -229,37 +242,15 @@ with st.expander("Model details", expanded=False):
 # Render inputs & predict
 values, x_row = render_inputs(feature_names, ranges)
 
-if st.button(f"Predict {target_name}"):
-    try:
-        bounds_warning(values, ranges)
-        y = predict_one(model, scaler_X, scaler_y, x_row)
-        st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
-    except Exception as e:
-        st.error(f"Prediction failed: {e}")
+if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
+    st.error(f"Feature count mismatch: scaler expects {scaler_X.n_features_in_}, got {len(x_row)}")
+else:
+    if st.button(f"Predict {target_name}"):
+        try:
+            bounds_warning(values, ranges)
+            y = predict_one(model, scaler_X, scaler_y, x_row)
+            st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+        except Exception as e:
+            st.error(f"Prediction failed: {e}")
 
-# Batch CSV
-st.markdown("---")
-st.subheader("Batch prediction (CSV)")
-st.write("Upload a CSV with the 9 feature columns (any order is ok if headers match).")
-up = st.file_uploader("CSV file", type=["csv"])
-if up is not None:
-    dfu = pd.read_csv(up)
-    try:
-        cols = feature_names
-        if all(c in dfu.columns for c in cols):
-            X = dfu[cols].values
-        else:
-            X = dfu.values
-        Xs = scaler_X.transform(X)
-        y_scaled = model.predict(Xs).reshape(-1, 1)
-        y = scaler_y.inverse_transform(y_scaled).ravel()
-        out = dfu.copy()
-        out[target_name] = y
-        st.success("Predictions computed.")
-        st.dataframe(out.head())
-        st.download_button("Download CSV with predictions",
-                           data=out.to_csv(index=False).encode("utf-8"),
-                           file_name=f"predictions_{entry.get('id','model')}.csv",
-                           mime="text/csv")
-    except Exception as e:
-        st.error(f"Failed to predict: {e}")
+# NOTE: CSV batch upload removed by request
