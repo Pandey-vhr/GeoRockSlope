@@ -219,7 +219,9 @@ def render_inputs(feature_names, ranges_data):
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()), help=rng_help("D", ranges_data))]
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
-        vals["PoissonsRatio"] = float_input(INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f", rng_help("PoissonsRatio", ranges_data))
+        eps = 1e-9
+        vals["PoissonsRatio"] = st.number_input(..., max_value=float(mx) + eps, step=0.01, format="%.2f", ...)
+
     mn, mx = get_bounds("E", ranges_data)
     with colRight:
         vals["E"]             = float_input(INPUT_LABELS['YM'], mn, mx, mn, 0.1, "%.1f", rng_help("E", ranges_data))
