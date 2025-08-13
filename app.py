@@ -1,13 +1,12 @@
 # app.py
 import json
-from decimal import Decimal
 from pathlib import Path
 
 import joblib
 import numpy as np
 import streamlit as st
 
-st.set_page_config(page_title="GeoRockSlope", page_icon="🪨", layout="centered")
+st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
 # ----------------------------
 # Paths & setup
@@ -16,14 +15,6 @@ BASE = Path(__file__).parent.resolve()
 MODELS_DIR = BASE / "models"
 MANIFEST_PATH = MODELS_DIR / "models_manifest.json"
 RANGES_PATH = BASE / "training_ranges.json"
-
-# Optional header logo: place a file at assets/logo.png (or .jpg/.jpeg)
-def show_logo():
-    for p in ["assets/logo.png", "assets/logo.jpg", "assets/logo.jpeg"]:
-        fp = BASE / p
-        if fp.exists():
-            st.image(p, width=128)
-            break
 
 # ----------------------------
 # Constants
@@ -154,9 +145,17 @@ def int_input(label, mn, mx, val, help_txt):
     return st.number_input(label, min_value=int(mn), max_value=int(mx),
                            value=int(val), step=1, format="%d", help=help_txt)
 
-def float_input(label, mn, mx, val, step, fmt, help_txt):
-    return st.number_input(label, min_value=float(mn), max_value=float(mx),
-                           value=float(val), step=float(step), format=fmt, help=help_txt)
+def float_input(label, mn, mx, val, step, fmt, help_txt, epsilon=0.0):
+    """Standard float input; `epsilon` lets us nudge the max slightly (for 0.21 edge case)."""
+    return st.number_input(
+        label=label,
+        min_value=float(mn),
+        max_value=float(mx) + float(epsilon),
+        value=float(val),
+        step=float(step),
+        format=fmt,
+        help=help_txt,
+    )
 
 def render_inputs(feature_names, ranges_data):
     colLeft, colRight = st.columns(2)
@@ -185,17 +184,13 @@ def render_inputs(feature_names, ranges_data):
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
                                     help=rng_help("D", ranges_data))]
 
-    # Poisson's Ratio — use Decimal to hit 0.21 exactly
+    # Poisson's Ratio — use float with tiny epsilon to allow 0.21 exactly
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
-        vals["PoissonsRatio"] = st.number_input(
-            label=INPUT_LABELS['PR'],
-            min_value=Decimal(str(mn)),
-            max_value=Decimal(str(mx)),   # e.g., 0.21
-            value=Decimal(str(mn)),
-            step=Decimal("0.01"),
-            format="%.2f",
-            help=rng_help("PoissonsRatio", ranges_data),
+        vals["PoissonsRatio"] = float_input(
+            INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f",
+            rng_help("PoissonsRatio", ranges_data),
+            epsilon=1e-9  # <- key fix
         )
 
     mn, mx = get_bounds("E", ranges_data)
@@ -205,7 +200,7 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
-    # Ensure numeric types for model/scaler (Decimal -> float)
+    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -219,14 +214,14 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 # ----------------------------
 # App
 # ----------------------------
-show_logo()
-st.title("🧩 GeoRockSlope")
+st.title("GeoRockSlope")
 
 # Brief guidance + dataset note (single line, as requested)
 st.info(
     "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. The best models for FoS prediction is ABC-ANN with test R² value of 0.9376 and of RMSE 0.3179. And, for Seismic-FoS, GA-ANN is best model with test R² value of 0.9178 and RMSE of 0.2513"
 
     )
+
 
 ranges = load_ranges()
 models = load_manifest()
@@ -268,3 +263,4 @@ else:
             st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
         except Exception as e:
             st.error(f"Prediction failed: {e}")
+
