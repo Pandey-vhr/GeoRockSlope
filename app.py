@@ -1,73 +1,33 @@
 # app.py
-import base64
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import joblib
 import numpy as np
 import streamlit as st
 
-# ---------- Page setup ----------
-st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
+st.set_page_config(page_title="GeoRockSlope", page_icon="🪨", layout="centered")
 
+# ----------------------------
+# Paths & setup
+# ----------------------------
 BASE = Path(__file__).parent.resolve()
 MODELS_DIR = BASE / "models"
 MANIFEST_PATH = MODELS_DIR / "models_manifest.json"
 RANGES_PATH = BASE / "training_ranges.json"
 
-# ---------- Background image ----------
-# Choose one of these (local file preferred for speed); order is fallback priority.
-BG_IMAGE = "assets/bg_1920x1080.jpg"  # put your resized background here
-BG_FALLBACK = "assets/bg.jpg"         # raw logo if you prefer
-BG_MODE = "contain"                   # 'contain' (no crop) or 'cover' (fills screen, can crop)
+# Optional header logo: place a file at assets/logo.png (or .jpg/.jpeg)
+def show_logo():
+    for p in ["assets/logo.png", "assets/logo.jpg", "assets/logo.jpeg"]:
+        fp = BASE / p
+        if fp.exists():
+            st.image(p, width=128)
+            break
 
-def set_background(image_path: str, mode: str = "contain"):
-    """Set a full-page background. mode: 'contain' (no crop) or 'cover' (edge-to-edge)."""
-    p = BASE / image_path
-    css = None
-    if p.exists():
-        data = base64.b64encode(p.read_bytes()).decode()
-        css = f"""
-        <style>
-          .stApp {{
-            background-image: url("data:image/jpeg;base64,{data}");
-            background-size: {mode};
-            background-repeat: no-repeat;
-            background-position: center top;
-            background-attachment: fixed;
-            background-color: #f6f7f9;
-          }}
-          .block-container {{
-            background: rgba(255,255,255,.82);
-            border-radius: 12px;
-            padding: 1.2rem 1.4rem;
-          }}
-        </style>
-        """
-    else:
-        # treat as URL (or last-resort: light canvas only)
-        css = f"""
-        <style>
-          .stApp {{
-            background: url("{image_path}") center top / {mode} no-repeat fixed, #f6f7f9;
-          }}
-          .block-container {{
-            background: rgba(255,255,255,.82);
-            border-radius: 12px;
-            padding: 1.2rem 1.4rem;
-          }}
-        </style>
-        """
-    st.markdown(css, unsafe_allow_html=True)
-
-# Try main, then fallback
-if (BASE / BG_IMAGE).exists():
-    set_background(BG_IMAGE, BG_MODE)
-elif (BASE / BG_FALLBACK).exists():
-    set_background(BG_FALLBACK, BG_MODE)
-# else: no background applied (safe to proceed)
-
-# ---------- Constants ----------
+# ----------------------------
+# Constants
+# ----------------------------
 FEATURE_ORDER = ["SlopeHeight","SlopeAngle","UCS","GSI","mi","D","PoissonsRatio","E","Density"]
 
 INPUT_LABELS = {
@@ -83,7 +43,7 @@ INPUT_LABELS = {
     'DEN'         : 'Density'
 }
 
-# Fallback training bounds if training_ranges.json is missing
+# Fallback bounds if training_ranges.json is absent
 DEFAULT_BOUNDS = {
     "SlopeHeight": (13.0, 74.0),
     "SlopeAngle":  (55.0, 84.0),
@@ -112,7 +72,9 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# ---------- Loaders ----------
+# ----------------------------
+# Loaders
+# ----------------------------
 @st.cache_resource
 def load_ranges():
     if RANGES_PATH.exists():
@@ -137,7 +99,7 @@ def _pretty_model_name(folder_name: str) -> str:
 
 @st.cache_resource
 def load_manifest():
-    # 1) Use explicit manifest if present
+    # 1) Explicit manifest
     if MANIFEST_PATH.exists():
         try:
             data = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -172,7 +134,9 @@ def load_artifacts(entry):
     scaler_y = joblib.load(entry["scaler_y_path"])
     return model, scaler_X, scaler_y
 
-# ---------- UI helpers ----------
+# ----------------------------
+# Helpers for inputs
+# ----------------------------
 def get_bounds(name, ranges_data):
     if ranges_data and "ranges" in ranges_data and name in ranges_data["ranges"]:
         r = ranges_data["ranges"][name]
@@ -216,22 +180,24 @@ def render_inputs(feature_names, ranges_data):
     mn, mx = get_bounds("mi", ranges_data)
     with colRight:
         vals["mi"]          = int_input  (INPUT_LABELS['MI'],           mn, mx, mn,           rng_help("mi", ranges_data))
-    vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()), help=rng_help("D", ranges_data))]
-    mn, mx = get_bounds("PoissonsRatio", ranges_data)
-    
-    eps = 1e-9
-    mn, mx = get_bounds("PoissonsRatio", ranges)
 
+    # Disturbance factor via dropdown
+    vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
+                                    help=rng_help("D", ranges_data))]
+
+    # Poisson's Ratio — use Decimal to hit 0.21 exactly
+    mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
-    vals["PoissonsRatio"] = st.number_input(
-        label=INPUT_LABELS['PR'],
-        min_value=float(mn),
-        max_value=float(mx) + eps,   # e.g., 0.21 + tiny epsilon
-        value=float(mn),
-        step=0.01,
-        format="%.2f",
-        help=rng_help("PoissonsRatio", ranges)
-    )
+        vals["PoissonsRatio"] = st.number_input(
+            label=INPUT_LABELS['PR'],
+            min_value=Decimal(str(mn)),
+            max_value=Decimal(str(mx)),   # e.g., 0.21
+            value=Decimal(str(mn)),
+            step=Decimal("0.01"),
+            format="%.2f",
+            help=rng_help("PoissonsRatio", ranges_data),
+        )
+
     mn, mx = get_bounds("E", ranges_data)
     with colRight:
         vals["E"]             = float_input(INPUT_LABELS['YM'], mn, mx, mn, 0.1, "%.1f", rng_help("E", ranges_data))
@@ -239,8 +205,8 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
-    # Order exactly as the model expects
-    x_row = [vals[n] for n in feature_names]
+    # Ensure numeric types for model/scaler (Decimal -> float)
+    x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
 def predict_one(model, scaler_X, scaler_y, row_vals):
@@ -250,11 +216,17 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     y = scaler_y.inverse_transform(y_scaled).ravel()
     return float(y[0])
 
-# ---------- App ----------
+# ----------------------------
+# App
+# ----------------------------
+show_logo()
 st.title("🧩 GeoRockSlope")
 
-# Ultra-brief guidance + dataset note
-st.info("Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. Best models: For FoS prediction is ABC-ANN (Test R² 0.9376, RMSE 0.3179), and for Seismic-FoS is GA-ANN (Test R² 0.9178, RMSE 0.2513)")
+# Brief guidance + dataset note (single line, as requested)
+st.info(
+    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. The best models for FoS prediction is ABC-ANN with test R² value of 0.9376 and of RMSE 0.3179. And, for Seismic-FoS, GA-ANN is best model with test R² value of 0.9178 and RMSE of 0.2513"
+
+    )
 
 ranges = load_ranges()
 models = load_manifest()
@@ -271,7 +243,6 @@ model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
-# Optional details
 with st.expander("Model details", expanded=False):
     st.json({
         "id": entry.get("id"),
@@ -285,7 +256,7 @@ with st.expander("Model details", expanded=False):
         "feature_names": feature_names
     })
 
-# Inputs & prediction
+# Inputs + Predict
 values, x_row = render_inputs(feature_names, ranges)
 
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
