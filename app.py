@@ -226,4 +226,59 @@ def render_inputs(feature_names, ranges_data):
     return vals, x_row
 
 def predict_one(model, scaler_X, scaler_y, row_vals):
-    X = np.array(row_vals,_
+    X = np.array(row_vals, dtype=float).reshape(1, -1)
+    Xs = scaler_X.transform(X)
+    y_scaled = model.predict(Xs).reshape(-1, 1)
+    y = scaler_y.inverse_transform(y_scaled).ravel()
+    return float(y[0])
+
+# ----------------------------
+# App
+# ----------------------------
+st.title("🧩 GeoRockSlope")
+# Ultra-brief guidance (best model per target)
+st.info("Best models — **FoS:** ABC-ANN (Test R² 0.9376, RMSE 0.3179). **Seismic-FoS:** GA-ANN (Test R² 0.9178, RMSE 0.2513).")
+
+ranges = load_ranges()
+models = load_manifest()
+if not models:
+    st.error("No models found. Each folder in 'models/' must contain model.joblib, scaler_X.joblib, scaler_y.joblib.")
+    st.caption(f"Looking in: {MODELS_DIR}")
+    st.stop()
+
+choices = {m["name"]: m for m in models}
+chosen = st.selectbox(INPUT_LABELS['MODEL'], list(choices.keys()))
+entry = choices[chosen]
+
+model, scaler_X, scaler_y = load_artifacts(entry)
+feature_names = entry.get("feature_names", FEATURE_ORDER)
+target_name = entry.get("target_name", "FoS")
+
+# (Optional) tiny details
+with st.expander("Model details", expanded=False):
+    st.json({
+        "id": entry.get("id"),
+        "name": entry.get("name"),
+        "target_name": target_name,
+        "paths": {
+            "model": entry.get("model_path"),
+            "scaler_X": entry.get("scaler_X_path"),
+            "scaler_y": entry.get("scaler_y_path"),
+        },
+        "feature_names": feature_names
+    })
+
+# Inputs + prediction
+values, x_row = render_inputs(feature_names, ranges)
+
+if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
+    st.error(f"Feature count mismatch: scaler expects {scaler_X.n_features_in_}, got {len(x_row)}")
+else:
+    if st.button(f"Predict {target_name}"):
+        try:
+            y = predict_one(model, scaler_X, scaler_y, x_row)
+            st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+        except Exception as e:
+            st.error(f"Prediction failed: {e}")
+
+# CSV upload removed by request
