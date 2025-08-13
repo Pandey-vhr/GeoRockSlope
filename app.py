@@ -1,67 +1,73 @@
-import streamlit as st
-import numpy as np
-import joblib
+# app.py
+import base64
+import json
 from pathlib import Path
-import json, base64
 
+import joblib
+import numpy as np
+import streamlit as st
+
+# ---------- Page setup ----------
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
-# ----------------------------
-# Background image (optional)
-# ----------------------------
 BASE = Path(__file__).parent.resolve()
-
-def set_background(image_path: str = "assets/bg.jpg"):
-    """Use a local image (recommended) or an external URL as app background."""
-    p = BASE / image_path
-    if p.exists():
-        data = base64.b64encode(p.read_bytes()).decode()
-        st.markdown(
-            f"""
-            <style>
-            .stApp {{
-                background-image: url("data:image/png;base64,{data}");
-                background-size: cover;
-                background-position: center;
-                background-attachment: fixed;
-            }}
-            .block-container {{
-                background-color: rgba(255,255,255,0.78);
-                border-radius: 12px;
-                padding: 1.2rem 1.4rem;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-    else:
-        # Treat as URL fallback
-        st.markdown(
-            f"""
-            <style>
-            .stApp {{
-                background: url("{image_path}") center/cover no-repeat fixed;
-            }}
-            .block-container {{
-                background-color: rgba(255,255,255,0.78);
-                border-radius: 12px;
-                padding: 1.2rem 1.4rem;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-# Call this with your image path or URL (comment out if you don't want a background)
-set_background("assets/bg.jpg")
-
-# ----------------------------
-# Paths & constants
-# ----------------------------
 MODELS_DIR = BASE / "models"
 MANIFEST_PATH = MODELS_DIR / "models_manifest.json"
 RANGES_PATH = BASE / "training_ranges.json"
 
+# ---------- Background image ----------
+# Choose one of these (local file preferred for speed); order is fallback priority.
+BG_IMAGE = "assets/bg_1920x1080.jpg"  # put your resized background here
+BG_FALLBACK = "assets/bg.jpg"         # raw logo if you prefer
+BG_MODE = "contain"                   # 'contain' (no crop) or 'cover' (fills screen, can crop)
+
+def set_background(image_path: str, mode: str = "contain"):
+    """Set a full-page background. mode: 'contain' (no crop) or 'cover' (edge-to-edge)."""
+    p = BASE / image_path
+    css = None
+    if p.exists():
+        data = base64.b64encode(p.read_bytes()).decode()
+        css = f"""
+        <style>
+          .stApp {{
+            background-image: url("data:image/jpeg;base64,{data}");
+            background-size: {mode};
+            background-repeat: no-repeat;
+            background-position: center top;
+            background-attachment: fixed;
+            background-color: #f6f7f9;
+          }}
+          .block-container {{
+            background: rgba(255,255,255,.82);
+            border-radius: 12px;
+            padding: 1.2rem 1.4rem;
+          }}
+        </style>
+        """
+    else:
+        # treat as URL (or last-resort: light canvas only)
+        css = f"""
+        <style>
+          .stApp {{
+            background: url("{image_path}") center top / {mode} no-repeat fixed, #f6f7f9;
+          }}
+          .block-container {{
+            background: rgba(255,255,255,.82);
+            border-radius: 12px;
+            padding: 1.2rem 1.4rem;
+          }}
+        </style>
+        """
+    st.markdown(css, unsafe_allow_html=True)
+
+# Try main, then fallback
+if (BASE / BG_IMAGE).exists():
+    set_background(BG_IMAGE, BG_MODE)
+elif (BASE / BG_FALLBACK).exists():
+    set_background(BG_FALLBACK, BG_MODE)
+# else: no background applied (safe to proceed)
+
+# ---------- Constants ----------
 FEATURE_ORDER = ["SlopeHeight","SlopeAngle","UCS","GSI","mi","D","PoissonsRatio","E","Density"]
 
 INPUT_LABELS = {
@@ -77,6 +83,7 @@ INPUT_LABELS = {
     'DEN'         : 'Density'
 }
 
+# Fallback training bounds if training_ranges.json is missing
 DEFAULT_BOUNDS = {
     "SlopeHeight": (13.0, 74.0),
     "SlopeAngle":  (55.0, 84.0),
@@ -105,9 +112,7 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# ----------------------------
-# Data loading & discovery
-# ----------------------------
+# ---------- Loaders ----------
 @st.cache_resource
 def load_ranges():
     if RANGES_PATH.exists():
@@ -132,7 +137,7 @@ def _pretty_model_name(folder_name: str) -> str:
 
 @st.cache_resource
 def load_manifest():
-    # 1) Respect explicit manifest if present
+    # 1) Use explicit manifest if present
     if MANIFEST_PATH.exists():
         try:
             data = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -143,7 +148,7 @@ def load_manifest():
         except Exception as e:
             st.warning(f"Manifest read error: {e}")
 
-    # 2) Auto-discover (includes acor_ann_f / acor_ann_sf)
+    # 2) Auto-discover subfolders with model+scalers
     entries = []
     if MODELS_DIR.exists():
         for sub in sorted(p for p in MODELS_DIR.iterdir() if p.is_dir()):
@@ -167,9 +172,7 @@ def load_artifacts(entry):
     scaler_y = joblib.load(entry["scaler_y_path"])
     return model, scaler_X, scaler_y
 
-# ----------------------------
-# Input helpers (inline range help)
-# ----------------------------
+# ---------- UI helpers ----------
 def get_bounds(name, ranges_data):
     if ranges_data and "ranges" in ranges_data and name in ranges_data["ranges"]:
         r = ranges_data["ranges"][name]
@@ -194,7 +197,8 @@ def float_input(label, mn, mx, val, step, fmt, help_txt):
 def render_inputs(feature_names, ranges_data):
     colLeft, colRight = st.columns(2)
     vals = {}
-    # Left
+
+    # Left column
     mn, mx = get_bounds("SlopeHeight", ranges_data)
     with colLeft:
         vals["SlopeHeight"] = float_input(INPUT_LABELS['SLOPE_HEIGHT'], mn, mx, mn, 0.1, "%.1f", rng_help("SlopeHeight", ranges_data))
@@ -207,7 +211,8 @@ def render_inputs(feature_names, ranges_data):
     mn, mx = get_bounds("GSI", ranges_data)
     with colLeft:
         vals["GSI"]         = int_input  (INPUT_LABELS['GSI'],          mn, mx, mn,           rng_help("GSI", ranges_data))
-    # Right
+
+    # Right column
     mn, mx = get_bounds("mi", ranges_data)
     with colRight:
         vals["mi"]          = int_input  (INPUT_LABELS['MI'],           mn, mx, mn,           rng_help("mi", ranges_data))
@@ -222,7 +227,8 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
-    x_row = [vals[n] for n in feature_names]  # ensure model’s own feature order
+    # Order exactly as the model expects
+    x_row = [vals[n] for n in feature_names]
     return vals, x_row
 
 def predict_one(model, scaler_X, scaler_y, row_vals):
@@ -232,17 +238,17 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     y = scaler_y.inverse_transform(y_scaled).ravel()
     return float(y[0])
 
-# ----------------------------
-# App
-# ----------------------------
+# ---------- App ----------
 st.title("🧩 GeoRockSlope")
-# Ultra-brief guidance (best model per target)
+
+# Ultra-brief guidance + dataset note
 st.info("Best models — **FoS:** ABC-ANN (Test R² 0.9376, RMSE 0.3179). **Seismic-FoS:** GA-ANN (Test R² 0.9178, RMSE 0.2513).")
+st.caption("Dataset basis: predictions were trained on results from finite-element analyses of 494 slope models parameterized with the Generalized Hoek–Brown criterion.")
 
 ranges = load_ranges()
 models = load_manifest()
 if not models:
-    st.error("No models found. Each folder in 'models/' must contain model.joblib, scaler_X.joblib, scaler_y.joblib.")
+    st.error("No models found. Each folder in 'models/' must contain model.joblib, scaler_X.joblib, scaler_y.joblib (e.g., abc_ann_f, abc_ann_sf, acor_ann_f, acor_ann_sf, ga_ann_f, ga_ann_sf).")
     st.caption(f"Looking in: {MODELS_DIR}")
     st.stop()
 
@@ -254,7 +260,7 @@ model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
-# (Optional) tiny details
+# Optional details
 with st.expander("Model details", expanded=False):
     st.json({
         "id": entry.get("id"),
@@ -268,7 +274,7 @@ with st.expander("Model details", expanded=False):
         "feature_names": feature_names
     })
 
-# Inputs + prediction
+# Inputs & prediction
 values, x_row = render_inputs(feature_names, ranges)
 
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
@@ -280,5 +286,3 @@ else:
             st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
         except Exception as e:
             st.error(f"Prediction failed: {e}")
-
-# CSV upload removed by request
