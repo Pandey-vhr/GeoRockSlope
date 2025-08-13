@@ -242,7 +242,7 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 st.title("🧩 GeoRockSlope")
 
 # Ultra-brief guidance + dataset note
-st.info("Best models — FoS: ABC-ANN (Test R² 0.9376, RMSE 0.3179). Seismic-FoS: GA-ANN (Test R² 0.9178, RMSE 0.2513). Models were trained on results from finite-element analyses of 494 slope models parameterized with the Generalized Hoek–Brown criterion.")
+st.info("Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. Best models: For FoS prediction is ABC-ANN (Test R² 0.9376, RMSE 0.3179), and for Seismic-FoS is GA-ANN (Test R² 0.9178, RMSE 0.2513)")
 
 ranges = load_ranges()
 models = load_manifest()
