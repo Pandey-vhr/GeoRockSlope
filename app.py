@@ -1,3 +1,4 @@
+# app.py
 import json
 from pathlib import Path
 
@@ -61,6 +62,33 @@ D_VALS = {
     'Moderately Disturbed Rock Mass': 0.7,
     'Very Disturbed Rock Mass': 1.0,
 }
+
+# ----------------------------
+# Header: title (left) + logo (right)
+# ----------------------------
+def _find_logo_path(basename="GECL"):
+    # Try common extensions and cases
+    exts = ("png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP","svg","SVG","gif","GIF")
+    for ext in exts:
+        p = BASE / f"{basename}.{ext}"
+        if p.exists():
+            return str(p)
+    # Fallback: any GECL.*
+    for p in BASE.glob(f"{basename}.*"):
+        if p.is_file():
+            return str(p)
+    return None
+
+col_title, col_logo = st.columns([0.85, 0.15])
+with col_title:
+    st.title("GeoRockSlope")
+with col_logo:
+    _logo = _find_logo_path("GECL")
+    if _logo:
+        # use_container_width keeps it neatly right-aligned in the column
+        st.image(_logo, use_container_width=True)
+    else:
+        st.caption("Place GECL.(png/jpg/...) next to app.py")
 
 # ----------------------------
 # Loaders
@@ -209,23 +237,17 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 # ----------------------------
-# App
+# Info banner
 # ----------------------------
-
-# Top row: title on left, logo on right
-col_title, col_logo = st.columns([0.85, 0.15])
-with col_title:
-    st.title("GeoRockSlope")
-with col_logo:
-    st.image("GECL.png", width=80)  # Adjust width as needed
-
-# Info note
 st.info(
-    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. "
-    "The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and RMSE 0.3179. "
-    "For Seismic-FoS, GA-ANN is the best model with test R² value of 0.9178 and RMSE 0.2513."
+    "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. "
+    "The best FoS model (ABC-ANN) achieved test R² = 0.9376 with RMSE = 0.3179; "
+    "the best Seismic-FoS model (GA-ANN) achieved test R² = 0.9178 with RMSE = 0.2513."
 )
 
+# ----------------------------
+# App body
+# ----------------------------
 ranges = load_ranges()
 models = load_manifest()
 if not models:
