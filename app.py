@@ -1,4 +1,4 @@
-# app.py
+# app.py (merged with top-right logo header)
 import json
 from pathlib import Path
 
@@ -15,7 +15,7 @@ BASE = Path(__file__).parent.resolve()
 MODELS_DIR = BASE / "models"
 MANIFEST_PATH = MODELS_DIR / "models_manifest.json"
 RANGES_PATH = BASE / "training_ranges.json"
-LOGO_PATH = BASE / "GECL.png"  # <— keep GECL.png beside app.py
+LOGO_PATH = BASE / "GECL.png"  # <-- keep GECL.png beside app.py
 
 # ----------------------------
 # Constants
@@ -63,6 +63,19 @@ D_VALS = {
     'Moderately Disturbed Rock Mass': 0.7,
     'Very Disturbed Rock Mass': 1.0,
 }
+
+# ----------------------------
+# Header with logo (top-right)
+# ----------------------------
+def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
+    col1, col2 = st.columns([0.8, 0.2], vertical_alignment="center")
+    with col1:
+        st.markdown(f"<h1 style='margin:0'>{title}</h1>", unsafe_allow_html=True)
+    with col2:
+        if LOGO_PATH.exists():
+            st.image(str(LOGO_PATH), width=logo_width)
+        else:
+            st.warning(f"Logo not found at: {LOGO_PATH}")
 
 # ----------------------------
 # Loaders
@@ -147,7 +160,6 @@ def int_input(label, mn, mx, val, help_txt):
                            value=int(val), step=1, format="%d", help=help_txt)
 
 def float_input(label, mn, mx, val, step, fmt, help_txt, epsilon=0.0):
-    """Standard float input; `epsilon` lets us nudge the max slightly (for 0.21 edge case)."""
     return st.number_input(
         label=label,
         min_value=float(mn),
@@ -185,13 +197,13 @@ def render_inputs(feature_names, ranges_data):
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
                                     help=rng_help("D", ranges_data))]
 
-    # Poisson's Ratio — use float with tiny epsilon to allow 0.21 exactly
+    # Poisson's Ratio — allow 0.21 edge case
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
             INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f",
             rng_help("PoissonsRatio", ranges_data),
-            epsilon=1e-9  # <- key fix
+            epsilon=1e-9
         )
 
     mn, mx = get_bounds("E", ranges_data)
@@ -201,7 +213,6 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
-    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -213,29 +224,13 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 # ----------------------------
-# Header with logo (top-right)
+# Page layout
 # ----------------------------
-def header_with_logo():
-    top = st.container()
-    with top:
-        left, right = st.columns([0.8, 0.2], vertical_alignment="center")
-        with left:
-            st.markdown("<h1 style='margin-bottom:0'>GeoRockSlope</h1>", unsafe_allow_html=True)
-        with right:
-            if LOGO_PATH.exists():
-                # Adjust width as you like (e.g., 90–140)
-                st.image(str(LOGO_PATH), use_container_width=True)
-            else:
-                st.empty()
+header_with_logo()  # show title + top-right logo
 
-# ----------------------------
-# App
-# ----------------------------
-header_with_logo()
-
-# Brief guidance + dataset note (single line, as requested)
 st.info(
-    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. The best models for FoS prediction is ABC-ANN with test R² value of 0.9376 and of RMSE 0.3179. And, for Seismic-FoS, GA-ANN is best model with test R² value of 0.9178 and RMSE of 0.2513"
+    "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. "
+    "For FoS, ABC-ANN achieved test R² ≈ 0.9376 with RMSE ≈ 0.318; for Seismic-FoS, GA-ANN achieved test R² ≈ 0.9178 with RMSE ≈ 0.251."
 )
 
 ranges = load_ranges()
@@ -266,7 +261,6 @@ with st.expander("Model details", expanded=False):
         "feature_names": feature_names
     })
 
-# Inputs + Predict
 values, x_row = render_inputs(feature_names, ranges)
 
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
