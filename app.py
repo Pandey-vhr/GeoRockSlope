@@ -2,10 +2,12 @@
 import json
 from pathlib import Path
 import base64
+import mimetypes
 
 import joblib
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
@@ -200,6 +202,7 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
+    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -214,44 +217,45 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 # Floating logo (bottom-right)
 # ----------------------------
 def _find_logo_path_anycase(basename="GECL"):
-    """Return path to GECL.* next to app.py, matching any extension and case."""
-    # Try direct matches first (common cases)
-    for ext in ("png", "PNG", "jpg", "JPG", "jpeg", "JPEG", "webp", "WEBP", "svg", "SVG", "gif", "GIF"):
+    # Try exact common extensions first
+    for ext in ("png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP","svg","SVG","gif","GIF"):
         p = BASE / f"{basename}.{ext}"
         if p.exists():
             return p
-    # Fallback: glob any case/extension
+    # Fallback: glob any GECL.*
     for p in BASE.glob(f"{basename}.*"):
         if p.is_file():
             return p
     return None
 
-def _inject_fixed_logo_bottom_right(basename="GECL", width_px=100, bottom="16px", right="16px", opacity=1.0):
+def pin_logo_bottom_right(basename="GECL", width_px=100, bottom_px=16, right_px=16, opacity=1.0):
+    """Render a fixed-position logo in the viewport's bottom-right corner."""
     path = _find_logo_path_anycase(basename)
     if not path:
+        # Uncomment for quick debug:
+        # st.write("Logo not found; looked for GECL.* next to app.py")
         return
-    ext = path.suffix.lower().lstrip(".")
-    # Map unknown/uppercase to a safe mime
-    mime = "image/svg+xml" if ext == "svg" else f"image/{'png' if ext == '' else ext}"
+    mime, _ = mimetypes.guess_type(str(path))
+    if mime is None:
+        mime = "image/png"
     b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
     html = f"""
-    <style>
-      #gecl-float {{
+    <div style="
         position: fixed;
-        right: {right};
-        bottom: {bottom};
-        z-index: 1000;
-      }}
-    </style>
-    <img id="gecl-float" src="data:{mime};base64,{b64}" width="{width_px}" style="opacity:{opacity};" />
+        right: {int(right_px)}px;
+        bottom: {int(bottom_px)}px;
+        z-index: 9999;">
+      <img src="data:{mime};base64,{b64}" width="{int(width_px)}" style="opacity:{opacity};"/>
+    </div>
     """
-    st.markdown(html, unsafe_allow_html=True)
+    components.html(html, height=0, width=0, scrolling=False)
 
 # ----------------------------
 # App
 # ----------------------------
 st.title("GeoRockSlope")
 
+# Brief guidance + dataset note
 st.info(
     "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. "
     "The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and RMSE 0.3179. "
@@ -299,5 +303,5 @@ else:
         except Exception as e:
             st.error(f"Prediction failed: {e}")
 
-# Inject the floating logo last so it stays above the UI
-_inject_fixed_logo_bottom_right(basename="GECL", width_px=100, bottom="16px", right="16px", opacity=1.0)
+# Pin the GECL logo at the very end so it stays above the UI
+pin_logo_bottom_right(basename="GECL", width_px=100, bottom_px=16, right_px=16, opacity=1.0)
