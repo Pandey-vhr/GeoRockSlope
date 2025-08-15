@@ -1,13 +1,9 @@
-# app.py
 import json
 from pathlib import Path
-import base64
-import mimetypes
 
 import joblib
 import numpy as np
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
@@ -202,7 +198,6 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
-    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -214,48 +209,17 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 # ----------------------------
-# Floating logo (bottom-right)
-# ----------------------------
-def _find_logo_path_anycase(basename="GECL"):
-    # Try exact common extensions first
-    for ext in ("png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP","svg","SVG","gif","GIF"):
-        p = BASE / f"{basename}.{ext}"
-        if p.exists():
-            return p
-    # Fallback: glob any GECL.*
-    for p in BASE.glob(f"{basename}.*"):
-        if p.is_file():
-            return p
-    return None
-
-def pin_logo_bottom_right(basename="GECL", width_px=100, bottom_px=16, right_px=16, opacity=1.0):
-    """Render a fixed-position logo in the viewport's bottom-right corner."""
-    path = _find_logo_path_anycase(basename)
-    if not path:
-        # Uncomment for quick debug:
-        # st.write("Logo not found; looked for GECL.* next to app.py")
-        return
-    mime, _ = mimetypes.guess_type(str(path))
-    if mime is None:
-        mime = "image/png"
-    b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
-    html = f"""
-    <div style="
-        position: fixed;
-        right: {int(right_px)}px;
-        bottom: {int(bottom_px)}px;
-        z-index: 9999;">
-      <img src="data:{mime};base64,{b64}" width="{int(width_px)}" style="opacity:{opacity};"/>
-    </div>
-    """
-    components.html(html, height=0, width=0, scrolling=False)
-
-# ----------------------------
 # App
 # ----------------------------
-st.title("GeoRockSlope")
 
-# Brief guidance + dataset note
+# Top row: title on left, logo on right
+col_title, col_logo = st.columns([0.85, 0.15])
+with col_title:
+    st.title("GeoRockSlope")
+with col_logo:
+    st.image("GECL.png", width=80)  # Adjust width as needed
+
+# Info note
 st.info(
     "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. "
     "The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and RMSE 0.3179. "
@@ -302,6 +266,3 @@ else:
             st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
         except Exception as e:
             st.error(f"Prediction failed: {e}")
-
-# Pin the GECL logo at the very end so it stays above the UI
-pin_logo_bottom_right(basename="GECL", width_px=100, bottom_px=16, right_px=16, opacity=1.0)
