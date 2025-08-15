@@ -1,6 +1,7 @@
 # app.py
 import json
 from pathlib import Path
+import base64
 
 import joblib
 import numpy as np
@@ -146,6 +147,7 @@ def int_input(label, mn, mx, val, help_txt):
                            value=int(val), step=1, format="%d", help=help_txt)
 
 def float_input(label, mn, mx, val, step, fmt, help_txt, epsilon=0.0):
+    """Standard float input; `epsilon` lets us nudge the max slightly (for 0.21 edge case)."""
     return st.number_input(
         label=label,
         min_value=float(mn),
@@ -189,7 +191,7 @@ def render_inputs(feature_names, ranges_data):
         vals["PoissonsRatio"] = float_input(
             INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f",
             rng_help("PoissonsRatio", ranges_data),
-            epsilon=1e-9
+            epsilon=1e-9  # <- key fix
         )
 
     mn, mx = get_bounds("E", ranges_data)
@@ -211,7 +213,7 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 # ----------------------------
-# Logo helper
+# Floating logo (bottom-right)
 # ----------------------------
 def _find_logo_path(basename="GECL"):
     """Try GECL.png / .jpg / .jpeg / .webp / .svg / .gif next to app.py."""
@@ -219,29 +221,38 @@ def _find_logo_path(basename="GECL"):
     for ext in exts:
         p = BASE / f"{basename}.{ext}"
         if p.exists():
-            return str(p)
+            return p
     return None
+
+def _inject_fixed_logo_bottom_right(basename="GECL", width_px=90, bottom="16px", right="16px", opacity=1.0):
+    path = _find_logo_path(basename)
+    if not path:
+        return  # silent if not present
+    ext = path.suffix.lower().lstrip(".")
+    mime = "image/svg+xml" if ext == "svg" else f"image/{ext}"
+    data = path.read_bytes()
+    b64 = base64.b64encode(data).decode("utf-8")
+    html = f"""
+    <style>
+      #gecl-float {{
+        position: fixed;
+        right: {right};
+        bottom: {bottom};
+        z-index: 1000;
+      }}
+    </style>
+    <img id="gecl-float" src="data:{mime};base64,{b64}" width="{width_px}" style="opacity:{opacity};" />
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 # ----------------------------
 # App
 # ----------------------------
+st.title("GeoRockSlope")
 
-# Title (left) + Logo (right)
-col1, col2 = st.columns([0.8, 0.2])
-with col1:
-    st.title("GeoRockSlope")
-with col2:
-    _logo = _find_logo_path("GECL")
-    if _logo:
-        st.image(_logo, width=80)
-    else:
-        st.caption("Place GECL.(png/jpg/jpeg/webp/svg/gif) next to app.py")
-
-# Brief guidance + dataset note
+# Brief guidance + dataset note (single line, as requested)
 st.info(
-    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. "
-    "The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and RMSE 0.3179. "
-    "For Seismic-FoS, GA-ANN is the best model with test R² value of 0.9178 and RMSE 0.2513."
+    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and of RMSE 0.3179. And, for Seismic-FoS, GA-ANN is best model with test R² value of 0.9178 and RMSE of 0.2513"
 )
 
 ranges = load_ranges()
@@ -284,3 +295,6 @@ else:
             st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
         except Exception as e:
             st.error(f"Prediction failed: {e}")
+
+# Inject the floating logo last so it sits above everything
+_inject_fixed_logo_bottom_right(basename="GECL", width_px=90, bottom="16px", right="16px", opacity=1.0)
