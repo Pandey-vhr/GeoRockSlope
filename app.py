@@ -146,7 +146,6 @@ def int_input(label, mn, mx, val, help_txt):
                            value=int(val), step=1, format="%d", help=help_txt)
 
 def float_input(label, mn, mx, val, step, fmt, help_txt, epsilon=0.0):
-    """Standard float input; `epsilon` lets us nudge the max slightly (for 0.21 edge case)."""
     return st.number_input(
         label=label,
         min_value=float(mn),
@@ -180,17 +179,15 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["mi"]          = int_input  (INPUT_LABELS['MI'],           mn, mx, mn,           rng_help("mi", ranges_data))
 
-    # Disturbance factor via dropdown
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
                                     help=rng_help("D", ranges_data))]
 
-    # Poisson's Ratio — use float with tiny epsilon to allow 0.21 exactly
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
             INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f",
             rng_help("PoissonsRatio", ranges_data),
-            epsilon=1e-9  # <- key fix
+            epsilon=1e-9
         )
 
     mn, mx = get_bounds("E", ranges_data)
@@ -200,7 +197,6 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
-    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -214,14 +210,20 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 # ----------------------------
 # App
 # ----------------------------
-st.title("GeoRockSlope")
 
-# Brief guidance + dataset note (single line, as requested)
+# Title and logo row
+col1, col2 = st.columns([0.8, 0.2])
+with col1:
+    st.title("GeoRockSlope")
+with col2:
+    st.image("GECL.png", width=80)  # Logo in top-right corner
+
+# Info note
 st.info(
-    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. The best models for FoS prediction is ABC-ANN with test R² value of 0.9376 and of RMSE 0.3179. And, for Seismic-FoS, GA-ANN is best model with test R² value of 0.9178 and RMSE of 0.2513"
-
-    )
-
+    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. "
+    "The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and RMSE 0.3179. "
+    "For Seismic-FoS, GA-ANN is the best model with test R² value of 0.9178 and RMSE 0.2513."
+)
 
 ranges = load_ranges()
 models = load_manifest()
@@ -251,7 +253,6 @@ with st.expander("Model details", expanded=False):
         "feature_names": feature_names
     })
 
-# Inputs + Predict
 values, x_row = render_inputs(feature_names, ranges)
 
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
@@ -263,4 +264,3 @@ else:
             st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
         except Exception as e:
             st.error(f"Prediction failed: {e}")
-
