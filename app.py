@@ -15,6 +15,7 @@ BASE = Path(__file__).parent.resolve()
 MODELS_DIR = BASE / "models"
 MANIFEST_PATH = MODELS_DIR / "models_manifest.json"
 RANGES_PATH = BASE / "training_ranges.json"
+LOGO_PATH = BASE / "GECL.png"  # <— keep GECL.png beside app.py
 
 # ----------------------------
 # Constants
@@ -62,33 +63,6 @@ D_VALS = {
     'Moderately Disturbed Rock Mass': 0.7,
     'Very Disturbed Rock Mass': 1.0,
 }
-
-# ----------------------------
-# Header: title (left) + logo (right)
-# ----------------------------
-def _find_logo_path(basename="GECL"):
-    # Try common extensions and cases
-    exts = ("png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP","svg","SVG","gif","GIF")
-    for ext in exts:
-        p = BASE / f"{basename}.{ext}"
-        if p.exists():
-            return str(p)
-    # Fallback: any GECL.*
-    for p in BASE.glob(f"{basename}.*"):
-        if p.is_file():
-            return str(p)
-    return None
-
-col_title, col_logo = st.columns([0.85, 0.15])
-with col_title:
-    st.title("GeoRockSlope")
-with col_logo:
-    _logo = _find_logo_path("GECL")
-    if _logo:
-        # use_container_width keeps it neatly right-aligned in the column
-        st.image(_logo, use_container_width=True)
-    else:
-        st.caption("Place GECL.(png/jpg/...) next to app.py")
 
 # ----------------------------
 # Loaders
@@ -173,6 +147,7 @@ def int_input(label, mn, mx, val, help_txt):
                            value=int(val), step=1, format="%d", help=help_txt)
 
 def float_input(label, mn, mx, val, step, fmt, help_txt, epsilon=0.0):
+    """Standard float input; `epsilon` lets us nudge the max slightly (for 0.21 edge case)."""
     return st.number_input(
         label=label,
         min_value=float(mn),
@@ -210,13 +185,13 @@ def render_inputs(feature_names, ranges_data):
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
                                     help=rng_help("D", ranges_data))]
 
-    # Poisson's Ratio
+    # Poisson's Ratio — use float with tiny epsilon to allow 0.21 exactly
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
             INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f",
             rng_help("PoissonsRatio", ranges_data),
-            epsilon=1e-9
+            epsilon=1e-9  # <- key fix
         )
 
     mn, mx = get_bounds("E", ranges_data)
@@ -226,6 +201,7 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
+    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -237,17 +213,31 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 # ----------------------------
-# Info banner
+# Header with logo (top-right)
 # ----------------------------
-st.info(
-    "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. "
-    "The best FoS model (ABC-ANN) achieved test R² = 0.9376 with RMSE = 0.3179; "
-    "the best Seismic-FoS model (GA-ANN) achieved test R² = 0.9178 with RMSE = 0.2513."
-)
+def header_with_logo():
+    top = st.container()
+    with top:
+        left, right = st.columns([0.8, 0.2], vertical_alignment="center")
+        with left:
+            st.markdown("<h1 style='margin-bottom:0'>GeoRockSlope</h1>", unsafe_allow_html=True)
+        with right:
+            if LOGO_PATH.exists():
+                # Adjust width as you like (e.g., 90–140)
+                st.image(str(LOGO_PATH), use_container_width=True)
+            else:
+                st.empty()
 
 # ----------------------------
-# App body
+# App
 # ----------------------------
+header_with_logo()
+
+# Brief guidance + dataset note (single line, as requested)
+st.info(
+    "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. The best models for FoS prediction is ABC-ANN with test R² value of 0.9376 and of RMSE 0.3179. And, for Seismic-FoS, GA-ANN is best model with test R² value of 0.9178 and RMSE of 0.2513"
+)
+
 ranges = load_ranges()
 models = load_manifest()
 if not models:
