@@ -179,9 +179,11 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["mi"]          = int_input  (INPUT_LABELS['MI'],           mn, mx, mn,           rng_help("mi", ranges_data))
 
+    # Disturbance factor via dropdown
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
                                     help=rng_help("D", ranges_data))]
 
+    # Poisson's Ratio — use float with tiny epsilon to allow 0.21 exactly
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
@@ -197,6 +199,7 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
 
+    # Ensure all values are plain floats for the model/scaler
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
@@ -208,17 +211,33 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
     return float(y[0])
 
 # ----------------------------
+# Logo helper
+# ----------------------------
+def _find_logo_path(basename="GECL"):
+    """Try GECL.png / .jpg / .jpeg / .webp / .svg / .gif next to app.py."""
+    exts = ("png", "jpg", "jpeg", "webp", "svg", "gif")
+    for ext in exts:
+        p = BASE / f"{basename}.{ext}"
+        if p.exists():
+            return str(p)
+    return None
+
+# ----------------------------
 # App
 # ----------------------------
 
-# Title and logo row
+# Title (left) + Logo (right)
 col1, col2 = st.columns([0.8, 0.2])
 with col1:
     st.title("GeoRockSlope")
 with col2:
-    st.image("GECL.png", width=80)  # Logo in top-right corner
+    _logo = _find_logo_path("GECL")
+    if _logo:
+        st.image(_logo, width=80)
+    else:
+        st.caption("Place GECL.(png/jpg/jpeg/webp/svg/gif) next to app.py")
 
-# Info note
+# Brief guidance + dataset note
 st.info(
     "Models were trained on results from finite-element analyses of 494 slope models using Generalized Hoek–Brown criterion. "
     "The best model for FoS prediction is ABC-ANN with test R² value of 0.9376 and RMSE 0.3179. "
@@ -253,6 +272,7 @@ with st.expander("Model details", expanded=False):
         "feature_names": feature_names
     })
 
+# Inputs + Predict
 values, x_row = render_inputs(feature_names, ranges)
 
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
