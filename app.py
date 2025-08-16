@@ -1,4 +1,4 @@
-# app.py (merged with top-right logo header)
+# app.py (with logo from GitHub repo)
 import json
 from pathlib import Path
 
@@ -15,7 +15,9 @@ BASE = Path(__file__).parent.resolve()
 MODELS_DIR = BASE / "models"
 MANIFEST_PATH = MODELS_DIR / "models_manifest.json"
 RANGES_PATH = BASE / "training_ranges.json"
-LOGO_PATH = BASE / "GECL.png"  # <-- keep GECL.png beside app.py
+
+# Use GitHub raw URL for logo
+LOGO_URL = "https://raw.githubusercontent.com/Pandey-vhr/GeoRockSlope/main/assets/GECL.png"
 
 # ----------------------------
 # Constants
@@ -72,10 +74,7 @@ def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
     with col1:
         st.markdown(f"<h1 style='margin:0'>{title}</h1>", unsafe_allow_html=True)
     with col2:
-        if LOGO_PATH.exists():
-            st.image(str(LOGO_PATH), width=logo_width)
-        else:
-            st.warning(f"Logo not found at: {LOGO_PATH}")
+        st.image(LOGO_URL, width=logo_width)
 
 # ----------------------------
 # Loaders
