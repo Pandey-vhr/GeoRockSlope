@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
 # ----------------------------
-# Paths & setup
+# Paths and setup
 # ----------------------------
 BASE = Path(__file__).parent.resolve()
 MODELS_DIR = BASE / "models"
@@ -66,6 +66,10 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
+# Saturated condition reduction using normal FoS model then reduce by 14.9%
+SAT_REDUCTION = 0.149
+SAT_FACTOR = 1.0 - SAT_REDUCTION  # 0.851
+
 # ----------------------------
 # Header with logo (top-right)
 # ----------------------------
@@ -114,7 +118,7 @@ def load_manifest():
         except Exception as e:
             st.warning(f"Manifest read error: {e}")
 
-    # 2) Auto-discover subfolders with model+scalers
+    # 2) Auto-discover subfolders with model and scalers
     entries = []
     if MODELS_DIR.exists():
         for sub in sorted(p for p in MODELS_DIR.iterdir() if p.is_dir()):
@@ -196,7 +200,7 @@ def render_inputs(feature_names, ranges_data):
     vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
                                     help=rng_help("D", ranges_data))]
 
-    # Poisson's Ratio — allow 0.21 edge case
+    # Poisson's Ratio allow 0.21 edge case
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
@@ -225,7 +229,7 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 # ----------------------------
 # Page layout
 # ----------------------------
-header_with_logo()  # show title + top-right logo
+header_with_logo()  # show title and top-right logo
 
 st.info(
     "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. "
@@ -247,6 +251,19 @@ model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
+# New UI to estimate Saturated FoS using normal FoS prediction reduced by 14.9%
+use_saturated_estimate = st.checkbox(
+    "Estimate FoS under Saturated condition (apply 14.9% reduction to normal FoS prediction)",
+    help="This uses a normal FoS model prediction and multiplies it by 0.851."
+)
+
+# If user intends saturated estimate but current model is not a FoS model, show a warning
+if use_saturated_estimate and target_name.lower() != "fos":
+    st.warning(
+        "For Saturated estimation, please select a FoS model (not Seismic FoS) "
+        "because the saturated estimate is defined as a 14.9% reduction from the normal FoS."
+    )
+
 with st.expander("Model details", expanded=False):
     st.json({
         "id": entry.get("id"),
@@ -262,12 +279,31 @@ with st.expander("Model details", expanded=False):
 
 values, x_row = render_inputs(feature_names, ranges)
 
+# ----------------------------
+# Predict button and outputs
+# ----------------------------
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
     st.error(f"Feature count mismatch: scaler expects {scaler_X.n_features_in_}, got {len(x_row)}")
 else:
-    if st.button(f"Predict {target_name}"):
+    btn_label = f"Predict {'Saturated FoS' if use_saturated_estimate else target_name}"
+    if st.button(btn_label):
         try:
             y = predict_one(model, scaler_X, scaler_y, x_row)
-            st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+
+            if use_saturated_estimate:
+                if target_name.lower() != "fos":
+                    st.error("Saturated estimation requires a normal FoS model selection.")
+                else:
+                    y_sat = y * SAT_FACTOR
+                    st.success(f"✅ Estimated Saturated FoS: **{y_sat:.4f}**")
+                    colA, colB = st.columns(2)
+                    with colA:
+                        st.metric("Normal FoS (model prediction)", f"{y:.4f}")
+                    with colB:
+                        st.metric("Saturated FoS (14.9% lower)", f"{y_sat:.4f}", delta="-14.9%")
+                    st.caption("Computed as: Saturated FoS = Normal FoS × 0.851")
+            else:
+                st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+
         except Exception as e:
             st.error(f"Prediction failed: {e}")
