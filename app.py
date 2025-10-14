@@ -66,41 +66,22 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# -------- Saturated reduction: 14.9% ± 3% with session RNG --------
-SAT_REDUCTION_BASE = 0.149  # 14.9%
-SAT_JITTER_ABS = 0.03       # ±3% → uniform in [0.119, 0.179]
-SAT_LOW = SAT_REDUCTION_BASE - SAT_JITTER_ABS
-SAT_HIGH = SAT_REDUCTION_BASE + SAT_JITTER_ABS
-SAT_FACTOR_LOW = 1.0 - SAT_HIGH  # 0.821
-SAT_FACTOR_HIGH = 1.0 - SAT_LOW  # 0.881
+# -------- Saturated output band: FoS * [0.821, 0.881] --------
+SAT_FACTOR_LOW = 0.821
+SAT_FACTOR_HIGH = 0.881
 
-def _get_rng(seed):
-    """Keep RNG in session so draws vary between clicks. Rebuild if seed changes."""
-    if 'sat_seed' not in st.session_state or 'sat_rng' not in st.session_state or st.session_state['sat_seed'] != seed:
+def _get_seeded_rng(seed: int | None):
+    """Return a RNG. If a seed is provided, keep RNG state in session for reproducible sequences."""
+    if seed is None:
+        return np.random.default_rng()  # fresh entropy each run
+    # persistent RNG for a given seed
+    if ('sat_seed' not in st.session_state) or (st.session_state.get('sat_seed') != seed) or ('sat_rng' not in st.session_state):
         st.session_state['sat_seed'] = seed
         st.session_state['sat_rng'] = np.random.default_rng(seed)
     return st.session_state['sat_rng']
 
-def sample_and_store(seed=None):
-    """Sample reduction r ~ U[SAT_LOW, SAT_HIGH], store r and factor in session."""
-    rng = _get_rng(seed)
-    r = float(rng.uniform(SAT_LOW, SAT_HIGH))
-    st.session_state['sat_reduction'] = r
-    st.session_state['sat_factor'] = 1.0 - r
-
-def ensure_sample(seed=None):
-    """Ensure we have a current sample in session."""
-    if 'sat_factor' not in st.session_state or 'sat_reduction' not in st.session_state:
-        sample_and_store(seed=seed)
-
-def _rerun():
-    if hasattr(st, "rerun"):
-        st.rerun()
-    else:
-        st.experimental_rerun()
-
 # ----------------------------
-# Header with logo
+# Header with logo (top-right)
 # ----------------------------
 def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
     col1, col2 = st.columns([0.8, 0.2])
@@ -159,7 +140,7 @@ def load_manifest():
                     "model_path": str(m),
                     "scaler_X_path": str(sx),
                     "scaler_y_path": str(sy),
-                    "target_name": "Seismic FoS" if ("sf" in sub.name.lower() or "seismic" in sub.name.lower()) else "FoS",
+                    "target_name": "Seismic FoS" if ("sf" in s or "seismic" in s) else "FoS",
                     "feature_names": FEATURE_ORDER
                 })
     return entries
@@ -172,7 +153,7 @@ def load_artifacts(entry):
     return model, scaler_X, scaler_y
 
 # ----------------------------
-# Inputs
+# Helpers for inputs
 # ----------------------------
 def get_bounds(name, ranges_data):
     if ranges_data and "ranges" in ranges_data and name in ranges_data["ranges"]:
@@ -329,11 +310,11 @@ target_name = entry.get("target_name", "FoS")
 # ----------------------------
 is_seismic = target_name.lower() != "fos"
 use_saturated_estimate = st.checkbox(
-    "Estimate FoS under Saturated condition (random reduction in 14.9% ± 3%)",
+    "Estimate FoS under Saturated condition (sample uniformly between FoS×0.821 and FoS×0.881)",
     value=st.session_state.get("use_saturated_estimate", False) and not is_seismic,
     disabled=is_seismic,
-    help=(f"Uses a normal FoS model prediction, then multiplies by a random factor in "
-          f"[{SAT_FACTOR_LOW:.3f}, {SAT_FACTOR_HIGH:.3f}]. Disabled for Seismic models."),
+    help=("When enabled, the app predicts Normal FoS internally, then samples a single value "
+          "uniformly from [FoS×0.821, FoS×0.881] and outputs only that Saturated FoS. Disabled for Seismic models."),
     key="use_saturated_estimate"
 )
 
@@ -342,20 +323,8 @@ if use_saturated_estimate and not is_seismic:
     with st.expander("Randomness options", expanded=False):
         use_seed = st.checkbox("Use fixed random seed for reproducibility", value=False, key="sat_use_seed")
         if use_seed:
-            seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31-1, value=0, step=1, key="sat_seed")
-            st.info("Fixed seed is enabled. Press Resample to draw the next value in the seeded sequence.")
-    # Ensure a sample exists when the toggle is turned on
-    ensure_sample(seed=seed)
-    # Resample button
-    if st.button("Resample reduction"):
-        sample_and_store(seed=seed)
-        _rerun()
-else:
-    # If user disables the checkbox or selects a seismic model, clear the stored factor to avoid confusion next time
-    st.session_state.pop('sat_factor', None)
-    st.session_state.pop('sat_reduction', None)
-    st.session_state.pop('sat_rng', None)
-    st.session_state.pop('sat_seed', None)
+            seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31 - 1, value=0, step=1, key="sat_seed")
+            st.caption("With a fixed seed, each click advances the deterministic sequence.")
 
 with st.expander("Model details", expanded=False):
     st.json({
@@ -381,34 +350,33 @@ else:
     btn_label = f"Predict {'Saturated FoS' if (use_saturated_estimate and not is_seismic) else target_name}"
     if st.button(btn_label, type="primary"):
         try:
-            y = predict_one(model, scaler_X, scaler_y, x_row)
+            # Predict normal FoS internally
+            fos = predict_one(model, scaler_X, scaler_y, x_row)
 
             if use_saturated_estimate and not is_seismic:
-                # Use the stored random factor
-                ensure_sample(seed=seed)
-                r = st.session_state['sat_reduction']
-                f = st.session_state['sat_factor']
-                y_sat = y * f
+                rng = _get_seeded_rng(seed)
+                # Sample directly between FoS*0.821 and FoS*0.881
+                low = fos * SAT_FACTOR_LOW
+                high = fos * SAT_FACTOR_HIGH
+                y_sat = float(rng.uniform(low, high))
+                factor_used = y_sat / fos
+                reduction_pct = (1.0 - factor_used) * 100.0
 
-                st.success(f"Estimated Saturated FoS: **{y_sat:.4f}**")
-                colA, colB, colC, colD = st.columns(4)
-                with colA:
-                    st.metric("Normal FoS (model prediction)", f"{y:.4f}")
-                with colB:
-                    st.metric("Applied reduction", f"{r*100:.2f}%")
-                with colC:
-                    st.metric("Factor used", f"{f:.6f}")
-                with colD:
-                    st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{r*100:.2f}%")
+                # Output only the Saturated FoS
+                st.success(f"Saturated FoS: **{y_sat:.4f}**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Factor used", f"{factor_used:.6f}")
+                with col2:
+                    st.metric("Implied reduction", f"{reduction_pct:.2f}%")
 
                 st.caption(
-                    f"Computed as: Saturated FoS = Normal FoS × {f:.6f} "
-                    f"(reduction sampled uniformly in [{SAT_LOW*100:.2f}%, {SAT_HIGH*100:.2f}%])."
+                    f"Sampled uniformly from [{low:.6f}, {high:.6f}] i.e. FoS × [{SAT_FACTOR_LOW:.3f}, {SAT_FACTOR_HIGH:.3f}]."
                 )
-                st.code(f"{y_sat:.6f} = {y:.6f} × {f:.6f}")
 
             else:
-                st.success(f"Predicted {target_name}: **{y:.4f}**")
+                # Normal or seismic target: show the usual prediction
+                st.success(f"Predicted {target_name}: **{fos:.4f}**")
 
         except Exception as e:
             st.error(f"Prediction failed: {e}")
