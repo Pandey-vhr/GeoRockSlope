@@ -1,4 +1,4 @@
-# app.py (with logo from GitHub repo)
+# app.py
 import json
 from pathlib import Path
 
@@ -66,15 +66,20 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# Saturated condition reduction using normal FoS model then reduce by 14.9%
-SAT_REDUCTION = 0.149
-SAT_FACTOR = 1.0 - SAT_REDUCTION  # 0.851
+# Saturated condition reduction sampled in [0.149 ± 0.01]
+SAT_REDUCTION_BASE = 0.149
+SAT_JITTER_ABS = 0.01  # gives range 0.139 to 0.159
+
+def sample_sat_factor(seed=None):
+    rng = np.random.default_rng(seed)
+    r = rng.uniform(SAT_REDUCTION_BASE - SAT_JITTER_ABS, SAT_REDUCTION_BASE + SAT_JITTER_ABS)
+    return r, 1.0 - r  # (reduction, multiplicative factor)
 
 # ----------------------------
 # Header with logo (top-right)
 # ----------------------------
 def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
-    col1, col2 = st.columns([0.8, 0.2], vertical_alignment="center")
+    col1, col2 = st.columns([0.8, 0.2])
     with col1:
         st.markdown(f"<h1 style='margin:0'>{title}</h1>", unsafe_allow_html=True)
     with col2:
@@ -158,20 +163,29 @@ def rng_help(name, ranges_data):
     unit = UNITS.get(name, "")
     return f"Training range: {mn:g} to {mx:g}{unit}"
 
-def int_input(label, mn, mx, val, help_txt):
-    return st.number_input(label, min_value=int(mn), max_value=int(mx),
-                           value=int(val), step=1, format="%d", help=help_txt)
+def int_input(label, mn, mx, key, help_txt):
+    default = st.session_state.get(key, int(mn))
+    val = st.number_input(label, min_value=int(mn), max_value=int(mx),
+                          value=int(default), step=1, format="%d", help=help_txt, key=key)
+    return val
 
-def float_input(label, mn, mx, val, step, fmt, help_txt, epsilon=0.0):
-    return st.number_input(
+def float_input(label, mn, mx, step, fmt, help_txt, key, epsilon=0.0):
+    default = st.session_state.get(key, float(mn))
+    val = st.number_input(
         label=label,
         min_value=float(mn),
         max_value=float(mx) + float(epsilon),
-        value=float(val),
+        value=float(default),
         step=float(step),
         format=fmt,
         help=help_txt,
+        key=key,
     )
+    return val
+
+def label_with_unit(base_label, field_key):
+    unit = UNITS.get(field_key, "")
+    return f"{base_label}{f' ({unit.strip()})' if unit else ''}"
 
 def render_inputs(feature_names, ranges_data):
     colLeft, colRight = st.columns(2)
@@ -180,41 +194,68 @@ def render_inputs(feature_names, ranges_data):
     # Left column
     mn, mx = get_bounds("SlopeHeight", ranges_data)
     with colLeft:
-        vals["SlopeHeight"] = float_input(INPUT_LABELS['SLOPE_HEIGHT'], mn, mx, mn, 0.1, "%.1f", rng_help("SlopeHeight", ranges_data))
+        vals["SlopeHeight"] = float_input(
+            label_with_unit(INPUT_LABELS['SLOPE_HEIGHT'], "SlopeHeight"),
+            mn, mx, 0.1, "%.1f", rng_help("SlopeHeight", ranges_data), key="SlopeHeight"
+        )
     mn, mx = get_bounds("SlopeAngle", ranges_data)
     with colLeft:
-        vals["SlopeAngle"]  = float_input(INPUT_LABELS['SLOPE_ANGLE'],  mn, mx, mn, 0.1, "%.1f", rng_help("SlopeAngle", ranges_data))
+        vals["SlopeAngle"] = float_input(
+            label_with_unit(INPUT_LABELS['SLOPE_ANGLE'], "SlopeAngle"),
+            mn, mx, 0.1, "%.1f", rng_help("SlopeAngle", ranges_data), key="SlopeAngle"
+        )
     mn, mx = get_bounds("UCS", ranges_data)
     with colLeft:
-        vals["UCS"]         = float_input(INPUT_LABELS['UCS'],          mn, mx, mn, 0.1, "%.1f", rng_help("UCS", ranges_data))
+        vals["UCS"] = float_input(
+            label_with_unit(INPUT_LABELS['UCS'], "UCS"),
+            mn, mx, 0.1, "%.1f", rng_help("UCS", ranges_data), key="UCS"
+        )
     mn, mx = get_bounds("GSI", ranges_data)
     with colLeft:
-        vals["GSI"]         = int_input  (INPUT_LABELS['GSI'],          mn, mx, mn,           rng_help("GSI", ranges_data))
+        vals["GSI"] = int_input(
+            INPUT_LABELS['GSI'], mn, mx, key="GSI", help_txt=rng_help("GSI", ranges_data)
+        )
 
     # Right column
     mn, mx = get_bounds("mi", ranges_data)
     with colRight:
-        vals["mi"]          = int_input  (INPUT_LABELS['MI'],           mn, mx, mn,           rng_help("mi", ranges_data))
+        vals["mi"] = int_input(
+            INPUT_LABELS['MI'], mn, mx, key="mi", help_txt=rng_help("mi", ranges_data)
+        )
 
     # Disturbance factor via dropdown
-    vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
-                                    help=rng_help("D", ranges_data))]
+    vals["D"] = D_VALS[st.selectbox(
+        INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
+        help=rng_help("D", ranges_data), key="D_label"
+    )]
 
     # Poisson's Ratio allow 0.21 edge case
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
-            INPUT_LABELS['PR'], mn, mx, mn, 0.01, "%.2f",
-            rng_help("PoissonsRatio", ranges_data),
+            INPUT_LABELS['PR'], mn, mx, 0.01, "%.2f",
+            rng_help("PoissonsRatio", ranges_data), key="PoissonsRatio",
             epsilon=1e-9
         )
 
     mn, mx = get_bounds("E", ranges_data)
     with colRight:
-        vals["E"]             = float_input(INPUT_LABELS['YM'], mn, mx, mn, 0.1, "%.1f", rng_help("E", ranges_data))
+        vals["E"] = float_input(
+            label_with_unit(INPUT_LABELS['YM'], "E"),
+            mn, mx, 0.1, "%.1f", rng_help("E", ranges_data), key="E"
+        )
     mn, mx = get_bounds("Density", ranges_data)
     with colRight:
-        vals["Density"]       = float_input(INPUT_LABELS['DEN'], mn, mx, mn, 0.01, "%.2f", rng_help("Density", ranges_data))
+        vals["Density"] = float_input(
+            label_with_unit(INPUT_LABELS['DEN'], "Density"),
+            mn, mx, 0.01, "%.2f", rng_help("Density", ranges_data), key="Density"
+        )
+
+    # Subtle out-of-range nudge
+    for k, v in vals.items():
+        mn, mx = get_bounds(k, ranges_data)
+        if mn is not None and mx is not None and not (mn <= float(v) <= mx):
+            st.caption(f"Note: {k} is outside training range [{mn:g}, {mx:g}].")
 
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
@@ -229,11 +270,11 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 # ----------------------------
 # Page layout
 # ----------------------------
-header_with_logo()  # show title and top-right logo
+header_with_logo()
 
 st.info(
-    "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek–Brown criterion. "
-    "For FoS, ABC-ANN achieved test R² ≈ 0.9376 with RMSE ≈ 0.318; for Seismic-FoS, GA-ANN achieved test R² ≈ 0.9178 with RMSE ≈ 0.251."
+    "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek-Brown criterion. "
+    "For FoS, ABC-ANN achieved test R^2 ≈ 0.9376 with RMSE ≈ 0.318; for Seismic-FoS, GA-ANN achieved test R^2 ≈ 0.9178 with RMSE ≈ 0.251."
 )
 
 ranges = load_ranges()
@@ -247,22 +288,35 @@ choices = {m["name"]: m for m in models}
 chosen = st.selectbox(INPUT_LABELS['MODEL'], list(choices.keys()))
 entry = choices[chosen]
 
+badge_cols = st.columns(3)
+with badge_cols[0]:
+    st.caption(f"Model ID: `{entry.get('id')}`")
+with badge_cols[1]:
+    st.caption(f"Target: **{entry.get('target_name', 'FoS')}**")
+with badge_cols[2]:
+    st.caption("Features: " + ", ".join(entry.get("feature_names", FEATURE_ORDER)))
+
 model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
-# New UI to estimate Saturated FoS using normal FoS prediction reduced by 14.9%
+# Saturated FoS toggle with random reduction control
+is_seismic = target_name.lower() != "fos"
 use_saturated_estimate = st.checkbox(
-    "Estimate FoS under Saturated condition (apply 14.9% reduction to normal FoS prediction)",
-    help="This uses a normal FoS model prediction and multiplies it by 0.851."
+    "Estimate FoS under Saturated condition (random reduction in 14.9% ± 1%)",
+    value=st.session_state.get("use_saturated_estimate", False) and not is_seismic,
+    disabled=is_seismic,
+    help=("Uses a normal FoS model prediction, then multiplies by a random factor in [0.841, 0.861]. "
+          "Disabled for Seismic models."),
+    key="use_saturated_estimate"
 )
 
-# If user intends saturated estimate but current model is not a FoS model, show a warning
-if use_saturated_estimate and target_name.lower() != "fos":
-    st.warning(
-        "For Saturated estimation, please select a FoS model (not Seismic FoS) "
-        "because the saturated estimate is defined as a 14.9% reduction from the normal FoS."
-    )
+seed = None
+if use_saturated_estimate and not is_seismic:
+    with st.expander("Randomness options", expanded=False):
+        use_seed = st.checkbox("Use fixed random seed for reproducibility", value=False, key="sat_use_seed")
+        if use_seed:
+            seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31-1, value=0, step=1, key="sat_seed")
 
 with st.expander("Model details", expanded=False):
     st.json({
@@ -285,25 +339,29 @@ values, x_row = render_inputs(feature_names, ranges)
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
     st.error(f"Feature count mismatch: scaler expects {scaler_X.n_features_in_}, got {len(x_row)}")
 else:
-    btn_label = f"Predict {'Saturated FoS' if use_saturated_estimate else target_name}"
-    if st.button(btn_label):
+    btn_label = f"Predict {'Saturated FoS' if (use_saturated_estimate and not is_seismic) else target_name}"
+    if st.button(btn_label, type="primary"):
         try:
             y = predict_one(model, scaler_X, scaler_y, x_row)
 
-            if use_saturated_estimate:
-                if target_name.lower() != "fos":
-                    st.error("Saturated estimation requires a normal FoS model selection.")
-                else:
-                    y_sat = y * SAT_FACTOR
-                    st.success(f"✅ Estimated Saturated FoS: **{y_sat:.4f}**")
-                    colA, colB = st.columns(2)
-                    with colA:
-                        st.metric("Normal FoS (model prediction)", f"{y:.4f}")
-                    with colB:
-                        st.metric("Saturated FoS (14.9% lower)", f"{y_sat:.4f}", delta="-14.9%")
-                    st.caption("Computed as: Saturated FoS = Normal FoS × 0.851")
+            if use_saturated_estimate and not is_seismic:
+                reduction, sat_factor = sample_sat_factor(seed=seed)
+                y_sat = y * sat_factor
+                st.success(f"Estimated Saturated FoS: **{y_sat:.4f}**")
+                colA, colB, colC = st.columns(3)
+                with colA:
+                    st.metric("Normal FoS (model prediction)", f"{y:.4f}")
+                with colB:
+                    st.metric("Applied reduction", f"{reduction*100:.1f}%")
+                with colC:
+                    st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{reduction*100:.1f}%")
+                st.caption(
+                    f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.3f} "
+                    f"(reduction sampled uniformly in [{(SAT_REDUCTION_BASE - SAT_JITTER_ABS)*100:.1f}%, "
+                    f"{(SAT_REDUCTION_BASE + SAT_JITTER_ABS)*100:.1f}%])."
+                )
             else:
-                st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+                st.success(f"Predicted {target_name}: **{y:.4f}**")
 
         except Exception as e:
             st.error(f"Prediction failed: {e}")
