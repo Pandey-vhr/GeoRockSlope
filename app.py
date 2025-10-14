@@ -8,7 +8,7 @@ import streamlit as st
 
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
-APP_BUILD = "saturated_band_0821_0881_v4"  # visible tag so you know this build is running
+APP_BUILD = "saturated_band_0821_0881_v5"  # visible tag so you know this build is running
 
 # ----------------------------
 # Paths and setup
@@ -82,15 +82,28 @@ def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
         st.image(LOGO_URL, width=logo_width)
 
 # ----------------------------
+# Persistent RNG for saturated sampling
+# ----------------------------
+def _get_rng(seed: int | None):
+    """
+    Persist an RNG in session_state so repeated clicks advance deterministically
+    when a fixed seed is selected. If seed changes, reinitialize the RNG.
+    """
+    if "sat_rng" not in st.session_state or (seed is not None and st.session_state.get("sat_seed") != seed):
+        st.session_state["sat_seed"] = seed
+        st.session_state["sat_rng"] = np.random.default_rng(seed) if seed is not None else np.random.default_rng()
+    return st.session_state["sat_rng"]
+
+# ----------------------------
 # Loaders
 # ----------------------------
-@st.cache_resource
+@st.cache_data
 def load_ranges():
     if RANGES_PATH.exists():
         try:
             return json.loads(RANGES_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as e:
+            st.warning(f"Could not parse training_ranges.json: {e}")
     return None
 
 def _pretty_model_name(folder_name: str) -> str:
@@ -118,7 +131,7 @@ def load_manifest():
 
     entries = []
     if MODELS_DIR.exists():
-        for sub in sorted(p for p in MODELS_DIR.iterdir() if p.is_dir()):
+        for sub in sorted(p for p in MODELS_DIR.iterdir() if p.is_dir() and not p.name.startswith(".")):
             m, sx, sy = sub/"model.joblib", sub/"scaler_X.joblib", sub/"scaler_y.joblib"
             if m.exists() and sx.exists() and sy.exists():
                 entries.append({
@@ -134,10 +147,13 @@ def load_manifest():
 
 @st.cache_resource(show_spinner=False)
 def load_artifacts(entry):
-    model = joblib.load(entry["model_path"])
-    scaler_X = joblib.load(entry["scaler_X_path"])
-    scaler_y = joblib.load(entry["scaler_y_path"])
-    return model, scaler_X, scaler_y
+    try:
+        model = joblib.load(entry["model_path"])
+        scaler_X = joblib.load(entry["scaler_X_path"])
+        scaler_y = joblib.load(entry["scaler_y_path"])
+        return model, scaler_X, scaler_y
+    except Exception as e:
+        raise RuntimeError(f"Failed to load artifacts for '{entry.get('id','<unknown>')}'. {e}")
 
 # ----------------------------
 # Inputs
@@ -155,13 +171,20 @@ def rng_help(name, ranges_data):
     unit = UNITS.get(name, "")
     return f"Training range: {mn:g} to {mx:g}{unit}"
 
+def _clamp(v, mn, mx):
+    try:
+        v = float(v)
+    except Exception:
+        return mn
+    return min(max(v, mn), mx)
+
 def int_input(label, mn, mx, key, help_txt):
-    default = st.session_state.get(key, int(mn))
+    default = _clamp(st.session_state.get(key, mn), mn, mx)
     return st.number_input(label, min_value=int(mn), max_value=int(mx),
                            value=int(default), step=1, format="%d", help=help_txt, key=key)
 
 def float_input(label, mn, mx, step, fmt, help_txt, key, epsilon=0.0):
-    default = st.session_state.get(key, float(mn))
+    default = _clamp(st.session_state.get(key, mn), mn, mx)
     return st.number_input(
         label=label, min_value=float(mn), max_value=float(mx) + float(epsilon),
         value=float(default), step=float(step), format=fmt, help=help_txt, key=key
@@ -194,8 +217,10 @@ def render_inputs(feature_names, ranges_data):
     with colRight:
         vals["mi"] = int_input(INPUT_LABELS['MI'], mn, mx, key="mi", help_txt=rng_help("mi", ranges_data))
 
-    vals["D"] = D_VALS[st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
-                                    help=rng_help("D", ranges_data), key="D_label")]
+    d_label = st.selectbox(INPUT_LABELS['D_VAL'], list(D_VALS.keys()),
+                           help=rng_help("D", ranges_data), key="D_label")
+    vals["D"] = D_VALS[d_label]
+    st.caption(f"Selected D = **{vals['D']}**")
 
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
@@ -265,6 +290,14 @@ model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
+# Defensive feature count check
+if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(feature_names):
+    st.error(
+        f"Feature count mismatch: scaler expects {scaler_X.n_features_in_}, "
+        f"but app prepared {len(feature_names)} features. Check manifest feature_names."
+    )
+    st.stop()
+
 # ----------------------------
 # Saturated FoS controls
 # ----------------------------
@@ -283,7 +316,7 @@ if use_saturated_estimate and not is_seismic:
         use_seed = st.checkbox("Use fixed random seed for reproducibility", value=False, key="sat_use_seed")
         if use_seed:
             seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31 - 1, value=0, step=1, key="sat_seed")
-            st.caption("With a fixed seed, each click advances a deterministic sequence.")
+            st.caption("With a fixed seed, each prediction advances a deterministic sequence.")
 
 with st.expander("Model details", expanded=False):
     st.json({
@@ -312,7 +345,7 @@ else:
             fos = predict_one(model, scaler_X, scaler_y, x_row)
 
             if use_saturated_estimate and not is_seismic:
-                rng = np.random.default_rng(seed) if seed is not None else np.random.default_rng()
+                rng = _get_rng(seed)
                 low, high = fos * SAT_FACTOR_LOW, fos * SAT_FACTOR_HIGH
                 y_sat = float(rng.uniform(low, high))
                 factor_used = y_sat / fos
