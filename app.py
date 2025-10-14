@@ -66,7 +66,7 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# -------- Saturated reduction: 14.9% ± 3% --------
+# -------- Saturated reduction: 14.9% ± 3% with session RNG --------
 SAT_REDUCTION_BASE = 0.149  # 14.9%
 SAT_JITTER_ABS = 0.03       # ±3% → uniform in [0.119, 0.179]
 SAT_LOW = SAT_REDUCTION_BASE - SAT_JITTER_ABS
@@ -74,14 +74,33 @@ SAT_HIGH = SAT_REDUCTION_BASE + SAT_JITTER_ABS
 SAT_FACTOR_LOW = 1.0 - SAT_HIGH  # 0.821
 SAT_FACTOR_HIGH = 1.0 - SAT_LOW  # 0.881
 
-def sample_sat_factor(seed=None):
-    """Return (reduction_fraction, multiplicative_factor) with uniform jitter."""
-    rng = np.random.default_rng(seed)
-    r = rng.uniform(SAT_LOW, SAT_HIGH)
-    return r, 1.0 - r
+def _get_rng(seed):
+    """Keep RNG in session so draws vary between clicks. Rebuild if seed changes."""
+    if 'sat_seed' not in st.session_state or 'sat_rng' not in st.session_state or st.session_state['sat_seed'] != seed:
+        st.session_state['sat_seed'] = seed
+        st.session_state['sat_rng'] = np.random.default_rng(seed)
+    return st.session_state['sat_rng']
+
+def sample_and_store(seed=None):
+    """Sample reduction r ~ U[SAT_LOW, SAT_HIGH], store r and factor in session."""
+    rng = _get_rng(seed)
+    r = float(rng.uniform(SAT_LOW, SAT_HIGH))
+    st.session_state['sat_reduction'] = r
+    st.session_state['sat_factor'] = 1.0 - r
+
+def ensure_sample(seed=None):
+    """Ensure we have a current sample in session."""
+    if 'sat_factor' not in st.session_state or 'sat_reduction' not in st.session_state:
+        sample_and_store(seed=seed)
+
+def _rerun():
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
 
 # ----------------------------
-# Header with logo (top-right)
+# Header with logo
 # ----------------------------
 def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
     col1, col2 = st.columns([0.8, 0.2])
@@ -153,7 +172,7 @@ def load_artifacts(entry):
     return model, scaler_X, scaler_y
 
 # ----------------------------
-# Helpers for inputs
+# Inputs
 # ----------------------------
 def get_bounds(name, ranges_data):
     if ranges_data and "ranges" in ranges_data and name in ranges_data["ranges"]:
@@ -256,7 +275,7 @@ def render_inputs(feature_names, ranges_data):
             mn, mx, 0.01, "%.2f", rng_help("Density", ranges_data), key="Density"
         )
 
-    # Subtle out-of-range nudge
+    # Out-of-range nudge
     for k, v in vals.items():
         mn, mx = get_bounds(k, ranges_data)
         if mn is not None and mx is not None and not (mn <= float(v) <= mx):
@@ -305,7 +324,9 @@ model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
-# Saturated FoS toggle with random reduction control
+# ----------------------------
+# Saturated FoS controls
+# ----------------------------
 is_seismic = target_name.lower() != "fos"
 use_saturated_estimate = st.checkbox(
     "Estimate FoS under Saturated condition (random reduction in 14.9% ± 3%)",
@@ -322,7 +343,19 @@ if use_saturated_estimate and not is_seismic:
         use_seed = st.checkbox("Use fixed random seed for reproducibility", value=False, key="sat_use_seed")
         if use_seed:
             seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31-1, value=0, step=1, key="sat_seed")
-            st.warning("Fixed seed is enabled. You will get the same reduction each time until you change the seed.")
+            st.info("Fixed seed is enabled. Press Resample to draw the next value in the seeded sequence.")
+    # Ensure a sample exists when the toggle is turned on
+    ensure_sample(seed=seed)
+    # Resample button
+    if st.button("Resample reduction"):
+        sample_and_store(seed=seed)
+        _rerun()
+else:
+    # If user disables the checkbox or selects a seismic model, clear the stored factor to avoid confusion next time
+    st.session_state.pop('sat_factor', None)
+    st.session_state.pop('sat_reduction', None)
+    st.session_state.pop('sat_rng', None)
+    st.session_state.pop('sat_seed', None)
 
 with st.expander("Model details", expanded=False):
     st.json({
@@ -351,24 +384,28 @@ else:
             y = predict_one(model, scaler_X, scaler_y, x_row)
 
             if use_saturated_estimate and not is_seismic:
-                reduction, sat_factor = sample_sat_factor(seed=seed)
-                y_sat = y * sat_factor
+                # Use the stored random factor
+                ensure_sample(seed=seed)
+                r = st.session_state['sat_reduction']
+                f = st.session_state['sat_factor']
+                y_sat = y * f
 
                 st.success(f"Estimated Saturated FoS: **{y_sat:.4f}**")
-                colA, colB, colC = st.columns(3)
+                colA, colB, colC, colD = st.columns(4)
                 with colA:
                     st.metric("Normal FoS (model prediction)", f"{y:.4f}")
                 with colB:
-                    st.metric("Applied reduction", f"{reduction*100:.2f}%")
+                    st.metric("Applied reduction", f"{r*100:.2f}%")
                 with colC:
-                    st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{reduction*100:.2f}%")
+                    st.metric("Factor used", f"{f:.6f}")
+                with colD:
+                    st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{r*100:.2f}%")
 
                 st.caption(
-                    f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.6f} "
-                    f"(reduction sampled uniformly in "
-                    f"[{(SAT_LOW)*100:.2f}%, {(SAT_HIGH)*100:.2f}%])."
+                    f"Computed as: Saturated FoS = Normal FoS × {f:.6f} "
+                    f"(reduction sampled uniformly in [{SAT_LOW*100:.2f}%, {SAT_HIGH*100:.2f}%])."
                 )
-                st.code(f"{y_sat:.6f} = {y:.6f} × {sat_factor:.6f}")
+                st.code(f"{y_sat:.6f} = {y:.6f} × {f:.6f}")
 
             else:
                 st.success(f"Predicted {target_name}: **{y:.4f}**")
