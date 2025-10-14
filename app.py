@@ -66,14 +66,18 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# Saturated condition reduction sampled uniformly in [14.9% ± 1%]
-SAT_REDUCTION_BASE = 0.149
-SAT_JITTER_ABS = 0.01  # range 0.139 to 0.159 → factor in [0.861, 0.841]
+# -------- Saturated reduction: 14.9% ± 3% --------
+SAT_REDUCTION_BASE = 0.149  # 14.9%
+SAT_JITTER_ABS = 0.03       # ±3% → uniform in [0.119, 0.179]
+SAT_LOW = SAT_REDUCTION_BASE - SAT_JITTER_ABS
+SAT_HIGH = SAT_REDUCTION_BASE + SAT_JITTER_ABS
+SAT_FACTOR_LOW = 1.0 - SAT_HIGH  # 0.821
+SAT_FACTOR_HIGH = 1.0 - SAT_LOW  # 0.881
 
 def sample_sat_factor(seed=None):
-    """Return (reduction_fraction, multiplicative_factor)."""
+    """Return (reduction_fraction, multiplicative_factor) with uniform jitter."""
     rng = np.random.default_rng(seed)
-    r = rng.uniform(SAT_REDUCTION_BASE - SAT_JITTER_ABS, SAT_REDUCTION_BASE + SAT_JITTER_ABS)
+    r = rng.uniform(SAT_LOW, SAT_HIGH)
     return r, 1.0 - r
 
 # ----------------------------
@@ -304,11 +308,11 @@ target_name = entry.get("target_name", "FoS")
 # Saturated FoS toggle with random reduction control
 is_seismic = target_name.lower() != "fos"
 use_saturated_estimate = st.checkbox(
-    "Estimate FoS under Saturated condition (random reduction in 14.9% ± 1%)",
+    "Estimate FoS under Saturated condition (random reduction in 14.9% ± 3%)",
     value=st.session_state.get("use_saturated_estimate", False) and not is_seismic,
     disabled=is_seismic,
-    help=("Uses a normal FoS model prediction, then multiplies by a random factor in [0.841, 0.861]. "
-          "Disabled for Seismic models."),
+    help=(f"Uses a normal FoS model prediction, then multiplies by a random factor in "
+          f"[{SAT_FACTOR_LOW:.3f}, {SAT_FACTOR_HIGH:.3f}]. Disabled for Seismic models."),
     key="use_saturated_estimate"
 )
 
@@ -357,17 +361,13 @@ else:
                 with colB:
                     st.metric("Applied reduction", f"{reduction*100:.2f}%")
                 with colC:
-                    # Show exact delta with two decimals to make variation visible
                     st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{reduction*100:.2f}%")
 
-                # Show the exact multiplicative factor to 6 decimals
                 st.caption(
                     f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.6f} "
                     f"(reduction sampled uniformly in "
-                    f"[{(SAT_REDUCTION_BASE - SAT_JITTER_ABS)*100:.2f}%, {(SAT_REDUCTION_BASE + SAT_JITTER_ABS)*100:.2f}%])."
+                    f"[{(SAT_LOW)*100:.2f}%, {(SAT_HIGH)*100:.2f}%])."
                 )
-
-                # Optional explicit formula print
                 st.code(f"{y_sat:.6f} = {y:.6f} × {sat_factor:.6f}")
 
             else:
