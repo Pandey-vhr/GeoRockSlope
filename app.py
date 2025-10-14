@@ -66,14 +66,15 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# Saturated condition reduction sampled in [14.9% ± 1%]
+# Saturated condition reduction sampled uniformly in [14.9% ± 1%]
 SAT_REDUCTION_BASE = 0.149
-SAT_JITTER_ABS = 0.01  # gives range 0.139 to 0.159
+SAT_JITTER_ABS = 0.01  # range 0.139 to 0.159 → factor in [0.861, 0.841]
 
 def sample_sat_factor(seed=None):
+    """Return (reduction_fraction, multiplicative_factor)."""
     rng = np.random.default_rng(seed)
     r = rng.uniform(SAT_REDUCTION_BASE - SAT_JITTER_ABS, SAT_REDUCTION_BASE + SAT_JITTER_ABS)
-    return r, 1.0 - r  # (reduction, multiplicative factor)
+    return r, 1.0 - r
 
 # ----------------------------
 # Header with logo (top-right)
@@ -317,9 +318,7 @@ if use_saturated_estimate and not is_seismic:
         use_seed = st.checkbox("Use fixed random seed for reproducibility", value=False, key="sat_use_seed")
         if use_seed:
             seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31-1, value=0, step=1, key="sat_seed")
-    # Quick way to change the sampled reduction without changing inputs
-    if st.button("Resample reduction"):
-        st.experimental_rerun()
+            st.warning("Fixed seed is enabled. You will get the same reduction each time until you change the seed.")
 
 with st.expander("Model details", expanded=False):
     st.json({
@@ -350,6 +349,7 @@ else:
             if use_saturated_estimate and not is_seismic:
                 reduction, sat_factor = sample_sat_factor(seed=seed)
                 y_sat = y * sat_factor
+
                 st.success(f"Estimated Saturated FoS: **{y_sat:.4f}**")
                 colA, colB, colC = st.columns(3)
                 with colA:
@@ -357,12 +357,19 @@ else:
                 with colB:
                     st.metric("Applied reduction", f"{reduction*100:.2f}%")
                 with colC:
+                    # Show exact delta with two decimals to make variation visible
                     st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{reduction*100:.2f}%")
+
+                # Show the exact multiplicative factor to 6 decimals
                 st.caption(
-                    f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.4f} "
+                    f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.6f} "
                     f"(reduction sampled uniformly in "
                     f"[{(SAT_REDUCTION_BASE - SAT_JITTER_ABS)*100:.2f}%, {(SAT_REDUCTION_BASE + SAT_JITTER_ABS)*100:.2f}%])."
                 )
+
+                # Optional explicit formula print
+                st.code(f"{y_sat:.6f} = {y:.6f} × {sat_factor:.6f}")
+
             else:
                 st.success(f"Predicted {target_name}: **{y:.4f}**")
 
