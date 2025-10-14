@@ -66,7 +66,7 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
-# Saturated condition reduction sampled in [0.149 ± 0.01]
+# Saturated condition reduction sampled in [14.9% ± 1%]
 SAT_REDUCTION_BASE = 0.149
 SAT_JITTER_ABS = 0.01  # gives range 0.139 to 0.159
 
@@ -229,7 +229,7 @@ def render_inputs(feature_names, ranges_data):
         help=rng_help("D", ranges_data), key="D_label"
     )]
 
-    # Poisson's Ratio allow 0.21 edge case
+    # Poisson's Ratio
     mn, mx = get_bounds("PoissonsRatio", ranges_data)
     with colRight:
         vals["PoissonsRatio"] = float_input(
@@ -317,6 +317,9 @@ if use_saturated_estimate and not is_seismic:
         use_seed = st.checkbox("Use fixed random seed for reproducibility", value=False, key="sat_use_seed")
         if use_seed:
             seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31-1, value=0, step=1, key="sat_seed")
+    # Quick way to change the sampled reduction without changing inputs
+    if st.button("Resample reduction"):
+        st.experimental_rerun()
 
 with st.expander("Model details", expanded=False):
     st.json({
@@ -352,13 +355,13 @@ else:
                 with colA:
                     st.metric("Normal FoS (model prediction)", f"{y:.4f}")
                 with colB:
-                    st.metric("Applied reduction", f"{reduction*100:.1f}%")
+                    st.metric("Applied reduction", f"{reduction*100:.2f}%")
                 with colC:
-                    st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{reduction*100:.1f}%")
+                    st.metric("Saturated FoS", f"{y_sat:.4f}", delta=f"-{reduction*100:.2f}%")
                 st.caption(
-                    f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.3f} "
-                    f"(reduction sampled uniformly in [{(SAT_REDUCTION_BASE - SAT_JITTER_ABS)*100:.1f}%, "
-                    f"{(SAT_REDUCTION_BASE + SAT_JITTER_ABS)*100:.1f}%])."
+                    f"Computed as: Saturated FoS = Normal FoS × {sat_factor:.4f} "
+                    f"(reduction sampled uniformly in "
+                    f"[{(SAT_REDUCTION_BASE - SAT_JITTER_ABS)*100:.2f}%, {(SAT_REDUCTION_BASE + SAT_JITTER_ABS)*100:.2f}%])."
                 )
             else:
                 st.success(f"Predicted {target_name}: **{y:.4f}**")
