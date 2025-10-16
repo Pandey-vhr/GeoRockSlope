@@ -1,4 +1,3 @@
-# app.py
 import json
 from pathlib import Path
 
@@ -73,17 +72,20 @@ SAT_FACTOR_HIGH = 0.881
 # ----------------------------
 # Header with logo
 # ----------------------------
+
 def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
     col1, col2 = st.columns([0.75, 0.25])
     with col1:
         st.markdown(f"<h1 style='margin:0'>{title}</h1>", unsafe_allow_html=True)
-        st.caption(f"Build: {APP_BUILD}")
+        # Removed build caption from UI
+        # st.caption(f"Build: {APP_BUILD}")
     with col2:
         st.image(LOGO_URL, width=logo_width)
 
 # ----------------------------
 # Persistent RNG for saturated sampling
 # ----------------------------
+
 def _get_rng(seed: int | None):
     """
     Persist an RNG in session_state so repeated clicks advance deterministically
@@ -97,6 +99,7 @@ def _get_rng(seed: int | None):
 # ----------------------------
 # Loaders
 # ----------------------------
+
 @st.cache_data
 def load_ranges():
     if RANGES_PATH.exists():
@@ -105,6 +108,7 @@ def load_ranges():
         except Exception as e:
             st.warning(f"Could not parse training_ranges.json: {e}")
     return None
+
 
 def _pretty_model_name(folder_name: str) -> str:
     s = folder_name.lower()
@@ -119,13 +123,16 @@ def _pretty_model_name(folder_name: str) -> str:
     seismic = " (Seismic)" if ("sf" in s or "seismic" in s) else ""
     return f"{algo}{seismic}"
 
+
 @st.cache_resource
 def load_manifest():
     if MANIFEST_PATH.exists():
         try:
             data = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and "models" in data: return data["models"]
-            if isinstance(data, list): return data
+            if isinstance(data, dict) and "models" in data: 
+                return data["models"]
+            if isinstance(data, list): 
+                return data
         except Exception as e:
             st.warning(f"Manifest read error: {e}")
 
@@ -145,6 +152,7 @@ def load_manifest():
                 })
     return entries
 
+
 @st.cache_resource(show_spinner=False)
 def load_artifacts(entry):
     try:
@@ -158,11 +166,13 @@ def load_artifacts(entry):
 # ----------------------------
 # Inputs
 # ----------------------------
+
 def get_bounds(name, ranges_data):
     if ranges_data and "ranges" in ranges_data and name in ranges_data["ranges"]:
         r = ranges_data["ranges"][name]
         return float(r["min"]), float(r["max"])
     return DEFAULT_BOUNDS.get(name, (None, None))
+
 
 def rng_help(name, ranges_data):
     mn, mx = get_bounds(name, ranges_data)
@@ -171,6 +181,7 @@ def rng_help(name, ranges_data):
     unit = UNITS.get(name, "")
     return f"Training range: {mn:g} to {mx:g}{unit}"
 
+
 def _clamp(v, mn, mx):
     try:
         v = float(v)
@@ -178,10 +189,12 @@ def _clamp(v, mn, mx):
         return mn
     return min(max(v, mn), mx)
 
+
 def int_input(label, mn, mx, key, help_txt):
     default = _clamp(st.session_state.get(key, mn), mn, mx)
     return st.number_input(label, min_value=int(mn), max_value=int(mx),
                            value=int(default), step=1, format="%d", help=help_txt, key=key)
+
 
 def float_input(label, mn, mx, step, fmt, help_txt, key, epsilon=0.0):
     default = _clamp(st.session_state.get(key, mn), mn, mx)
@@ -190,9 +203,11 @@ def float_input(label, mn, mx, step, fmt, help_txt, key, epsilon=0.0):
         value=float(default), step=float(step), format=fmt, help=help_txt, key=key
     )
 
+
 def label_with_unit(base_label, field_key):
     unit = UNITS.get(field_key, "")
     return f"{base_label}{f' ({unit.strip()})' if unit else ''}"
+
 
 def render_inputs(feature_names, ranges_data):
     colLeft, colRight = st.columns(2)
@@ -243,6 +258,7 @@ def render_inputs(feature_names, ranges_data):
     x_row = [float(vals[n]) for n in feature_names]
     return vals, x_row
 
+
 def predict_one(model, scaler_X, scaler_y, row_vals):
     X = np.array(row_vals, dtype=float).reshape(1, -1)
     Xs = scaler_X.transform(X)
@@ -253,6 +269,7 @@ def predict_one(model, scaler_X, scaler_y, row_vals):
 # ----------------------------
 # Page layout
 # ----------------------------
+
 header_with_logo()
 st.info(
     "Models were trained on results from finite-element analyses of 494 slope models using the Generalized Hoek-Brown criterion. "
@@ -270,21 +287,8 @@ choices = {m["name"]: m for m in models}
 chosen = st.selectbox(INPUT_LABELS['MODEL'], list(choices.keys()))
 entry = choices[chosen]
 
-# Tiny debug row
-dbg1, dbg2 = st.columns(2)
-with dbg1:
-    st.caption(f"Target: **{entry.get('target_name', 'FoS')}**")
-with dbg2:
-    if st.button("Force-clear cache"):
-        try:
-            st.cache_data.clear()
-        except Exception:
-            pass
-        try:
-            st.cache_resource.clear()
-        except Exception:
-            pass
-        st.success("Caches cleared. Rerun the app.")
+# Show only the target name summary, removed the Force-clear cache button
+st.caption(f"Target: **{entry.get('target_name', 'FoS')}**")
 
 model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
@@ -301,12 +305,12 @@ if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(featur
 # ----------------------------
 # Saturated FoS controls
 # ----------------------------
+
 is_seismic = target_name.lower() != "fos"
 use_saturated_estimate = st.checkbox(
-    "Estimate FoS under Saturated condition (sample uniformly between FoS×0.821 and FoS×0.881)",
+    "Estimate FoS under Saturated condition",
     value=st.session_state.get("use_saturated_estimate", False) and not is_seismic,
     disabled=is_seismic,
-    help="When enabled, the app predicts Normal FoS internally, then samples a single value uniformly from FoS×[0.821, 0.881] and outputs only that Saturated FoS.",
     key="use_saturated_estimate"
 )
 
@@ -318,24 +322,14 @@ if use_saturated_estimate and not is_seismic:
             seed = st.number_input("Seed (integer)", min_value=0, max_value=2**31 - 1, value=0, step=1, key="sat_seed")
             st.caption("With a fixed seed, each prediction advances a deterministic sequence.")
 
-with st.expander("Model details", expanded=False):
-    st.json({
-        "id": entry.get("id"),
-        "name": entry.get("name"),
-        "target_name": target_name,
-        "paths": {
-            "model": entry.get("model_path"),
-            "scaler_X": entry.get("scaler_X_path"),
-            "scaler_y": entry.get("scaler_y_path"),
-        },
-        "feature_names": feature_names
-    })
+# Removed the "Model details" expander from the main screen
 
 values, x_row = render_inputs(feature_names, ranges)
 
 # ----------------------------
 # Predict button and outputs
 # ----------------------------
+
 if hasattr(scaler_X, "n_features_in_") and scaler_X.n_features_in_ != len(x_row):
     st.error(f"Feature count mismatch: scaler expects {scaler_X.n_features_in_}, got {len(x_row)}")
 else:
