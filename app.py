@@ -7,8 +7,6 @@ import streamlit as st
 
 st.set_page_config(page_title="🧩 GeoRockSlope", page_icon="🪨", layout="centered")
 
-APP_BUILD = "saturated_band_0821_0881_v5"  # visible tag so you know this build is running
-
 # ----------------------------
 # Paths and setup
 # ----------------------------
