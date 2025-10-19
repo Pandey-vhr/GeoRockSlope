@@ -1,4 +1,4 @@
-# app.py (with logo from GitHub repo)
+# app.py
 import json
 from pathlib import Path
 
@@ -66,6 +66,10 @@ D_VALS = {
     'Very Disturbed Rock Mass': 1.0,
 }
 
+# Saturation factors from first code
+SAT_FACTOR_LOW  = 0.821
+SAT_FACTOR_HIGH = 0.881
+
 # ----------------------------
 # Header with logo (top-right)
 # ----------------------------
@@ -75,6 +79,15 @@ def header_with_logo(title: str = "GeoRockSlope", logo_width: int = 96):
         st.markdown(f"<h1 style='margin:0'>{title}</h1>", unsafe_allow_html=True)
     with col2:
         st.image(LOGO_URL, width=logo_width)
+
+# ----------------------------
+# Persistent RNG (from first code)
+# ----------------------------
+def _get_rng(seed: int | None):
+    if "sat_rng" not in st.session_state or (seed is not None and st.session_state.get("sat_seed") != seed):
+        st.session_state["sat_seed"] = seed
+        st.session_state["sat_rng"] = np.random.default_rng(seed) if seed is not None else np.random.default_rng()
+    return st.session_state["sat_rng"]
 
 # ----------------------------
 # Loaders
@@ -247,6 +260,9 @@ model, scaler_X, scaler_y = load_artifacts(entry)
 feature_names = entry.get("feature_names", FEATURE_ORDER)
 target_name = entry.get("target_name", "FoS")
 
+# Saturated estimate toggle (from first code)
+use_saturated_estimate = st.checkbox("Estimate FoS under Saturated condition", value=False, key="use_saturated_estimate")
+
 with st.expander("Model details", expanded=False):
     st.json({
         "id": entry.get("id"),
@@ -268,6 +284,15 @@ else:
     if st.button(f"Predict {target_name}"):
         try:
             y = predict_one(model, scaler_X, scaler_y, x_row)
-            st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+
+            # If saturated option is checked, mimic first code behavior
+            if use_saturated_estimate:
+                rng = _get_rng(None)
+                low, high = y * SAT_FACTOR_LOW, y * SAT_FACTOR_HIGH
+                y_sat = float(rng.uniform(low, high))
+                st.success(f"Saturated FoS: **{y_sat:.4f}**")
+            else:
+                st.success(f"✅ Predicted {target_name}: **{y:.4f}**")
+
         except Exception as e:
             st.error(f"Prediction failed: {e}")
